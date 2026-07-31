@@ -757,10 +757,7 @@
         const SUPABASE_URL = window.SUPABASE_CONFIG.url;
         const SUPABASE_ANON_KEY = window.SUPABASE_CONFIG.anonKey;
     
-        const {
-            createClient
-        } = supabase;
-        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // ============================================
         // GLOBAL VARIABLES
