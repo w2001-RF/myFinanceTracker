@@ -749,15 +749,15 @@
             </div>
         </div>
     </div>
-
+    <!-- new: load config.js (generated at build/deploy time) -->
+    <script src="config.js"></script>
     <script>
         // ============================================
         // SUPABASE CONFIGURATION
         // ============================================
-        // REMPLACEZ CES VALEURS PAR VOS PROPRES CREDENTIALS SUPABASE
-        const SUPABASE_URL = 'https://pequbiplyrqcwtjqcwkf.supabase.co'; // Ex: https://xxxxx.supabase.co
-        const SUPABASE_ANON_KEY = 'sb_publishable_adPYkCuCCm35YI33C4iSCw_y9m0bbLJ';
-
+        const SUPABASE_URL = window.SUPABASE_CONFIG?.SUPABASE_URL || 'https://your-local-or-demo.supabase.co';
+        const SUPABASE_ANON_KEY = window.SUPABASE_CONFIG?.SUPABASE_ANON_KEY || 'demo_or_local_anon_key';
+    
         const {
             createClient
         } = supabase;
