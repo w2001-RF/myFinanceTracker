@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Finance Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5em;
+            margin: 0;
+        }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info {
+            color: white;
+            font-size: 14px;
+        }
+
+        .sync-status {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .sync-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .auth-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            max-width: 400px;
+            margin: 50px auto;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .auth-container h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 3px solid #667eea;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            cursor: pointer;
+            background: #e9ecef;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .tab:hover {
+            background: #dee2e6;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            margin-bottom: -3px;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 30px;
+            animation: fadeIn 0.3s;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        h3 {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .input-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        input,
+        select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .summary-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .summary-item {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-item h3 {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .summary-item .amount {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .positive {
+            color: #28a745;
+        }
+
+        .negative {
+            color: #dc3545;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            padding: 5px 15px;
+            font-size: 14px;
+        }
+
+        .delete-btn:hover {
+            background: #c82333;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+
+            0%,
+            20% {
+                content: '.';
+            }
+
+            40% {
+                content: '..';
+            }
+
+            60%,
+            100% {
+                content: '...';
+            }
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-wrapper {
+                height: 300px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Authentication Screen -->
+    <div id="authScreen" class="auth-container">
+        <h2>🔐 Login to Finance Tracker</h2>
+        <div id="authMessage"></div>
+        <div class="auth-form">
+            <div class="input-field">
+                <label>Email</label>
+                <input type="email" id="authEmail" placeholder="your@email.com">
+            </div>
+            <div class="input-field">
+                <label>Password</label>
+                <input type="password" id="authPassword" placeholder="••••••••">
+            </div>
+            <button onclick="loginUser()">Login</button>
+            <button class="btn-secondary" onclick="registerUser()">Create Account</button>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="container" style="display: none;">
+        <div class="header">
+            <h1>💰 Personal Finance Tracker</h1>
+            <div class="user-section">
+                <div class="sync-status">
+                    <div class="sync-indicator"></div>
+                    <span>Synced</span>
+                </div>
+                <div class="user-info">
+                    <div id="userEmail"></div>
+                </div>
+                <button class="btn-danger" onclick="logoutUser()">Logout</button>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="openTab(event, 'dashboard')">📊 Dashboard</button>
+            <button class="tab" onclick="openTab(event, 'general')">💵 Income vs Expenses</button>
+            <button class="tab" onclick="openTab(event, 'rental')">🏠 Rental Income</button>
+            <button class="tab" onclick="openTab(event, 'savings')">💎 Savings</button>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <h2>📊 Financial Dashboard</h2>
+
+            <div class="summary-box">
+                <div class="summary-item">
+                    <h3>Total Net Balance</h3>
+                    <div class="amount" id="dashTotalBalance">0.00 DHS</div>
+                </div>
+                <div class="summary-item">
+                    <h3>Monthly Avg Income</h3>
+                    <div class="amount positive" id="dashAvgIncome">0.00 DHS</div>
+                </div>
+                <div class="summary-item">
+                    <h3>Monthly Avg Expenses</h3>
+                    <div class="amount negative" id="dashAvgExpenses">0.00 DHS</div>
+                </div>
+                <div class="summary-item">
+                    <h3>Loan Remaining</h3>
+                    <div class="amount negative" id="dashLoanRemaining">70,000.00 DHS</div>
+                </div>
+                <div class="summary-item">
+                    <h3>Total Savings</h3>
+                    <div class="amount positive" id="dashTotalSavings">0.00 DHS</div>
+                </div>
+                <div class="summary-item">
+                    <h3>Savings Progress</h3>
+                    <div class="amount" id="dashSavingsProgress">0%</div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="chart-container">
+                    <h3>Monthly Income vs Expenses</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="dashIncomeExpenseChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Net Balance Trend</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="dashBalanceChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Rental Income vs Loan Repayment</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="dashRentalChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Savings Accumulation</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="dashSavingsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- General Income vs Expenses Tab -->
+        <div id="general" class="tab-content">
+            <div class="section">
+                <h2>💵 Income vs Expenses</h2>
+                <div class="input-group">
+                    <div class="input-field">
+                        <label>Month-Year</label>
+                        <input type="month" id="generalMonth">
+                    </div>
+                    <div class="input-field">
+                        <label>Description</label>
+                        <input type="text" id="generalDesc" placeholder="e.g., Salary, Groceries">
+                    </div>
+                    <div class="input-field">
+                        <label>Type</label>
+                        <select id="generalType">
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                        </select>
+                    </div>
+                    <div class="input-field">
+                        <label>Amount (DHS)</label>
+                        <input type="number" id="generalAmount" placeholder="0.00" step="0.01">
+                    </div>
+                </div>
+                <button onclick="addGeneralTransaction()">Add Transaction</button>
+
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <h3>Total Income</h3>
+                        <div class="amount positive" id="totalIncome">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Total Expenses</h3>
+                        <div class="amount negative" id="totalExpenses">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Net Balance</h3>
+                        <div class="amount" id="netBalance">0.00 DHS</div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Monthly Income vs Expenses Trend</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="generalChart"></canvas>
+                    </div>
+                </div>
+
+                <table id="generalTable">
+                    <thead>
+                        <tr>
+                            <th>Month-Year</th>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Amount (DHS)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Rental Income Tab -->
+        <div id="rental" class="tab-content">
+            <div class="section">
+                <h2>🏠 Rental Income Tracker</h2>
+                <div class="input-group">
+                    <div class="input-field">
+                        <label>Month-Year</label>
+                        <input type="month" id="rentalMonth">
+                    </div>
+                    <div class="input-field">
+                        <label>Rent Received (DHS)</label>
+                        <input type="number" id="rentalIncome" placeholder="0.00" step="0.01">
+                    </div>
+                    <div class="input-field">
+                        <label>Expenses (DHS)</label>
+                        <input type="number" id="rentalExpense" placeholder="0.00" step="0.01">
+                    </div>
+                    <div class="input-field">
+                        <label>Expense Description</label>
+                        <input type="text" id="rentalExpenseDesc" placeholder="e.g., Maintenance">
+                    </div>
+                </div>
+                <button onclick="addRentalRecord()">Add Rental Record</button>
+
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <h3>Total Rent Received</h3>
+                        <div class="amount positive" id="totalRent">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Total Rental Expenses</h3>
+                        <div class="amount negative" id="totalRentalExpenses">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Net Rental Income</h3>
+                        <div class="amount" id="netRental">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Loan Balance</h3>
+                        <div class="amount negative" id="loanBalance">70,000.00 DHS</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <h3>Loan Repayment Progress</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="loanProgress" style="width: 0%">0%</div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Monthly Rental Income & Loan Progress</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="rentalChart"></canvas>
+                    </div>
+                </div>
+
+                <table id="rentalTable">
+                    <thead>
+                        <tr>
+                            <th>Month-Year</th>
+                            <th>Rent (DHS)</th>
+                            <th>Expenses (DHS)</th>
+                            <th>Expense Details</th>
+                            <th>Net (DHS)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Savings Tab -->
+        <div id="savings" class="tab-content">
+            <div class="section">
+                <h2>💎 Savings Tracker (2,000 DHS/month - 13 months)</h2>
+                <p style="margin-bottom: 15px;"><strong>Period:</strong> January 2026 - January 2027</p>
+
+                <div class="input-group">
+                    <div class="input-field">
+                        <label>Month-Year</label>
+                        <select id="savingsMonth">
+                            <option value="2026-01">January 2026</option>
+                            <option value="2026-02">February 2026</option>
+                            <option value="2026-03">March 2026</option>
+                            <option value="2026-04">April 2026</option>
+                            <option value="2026-05">May 2026</option>
+                            <option value="2026-06">June 2026</option>
+                            <option value="2026-07">July 2026</option>
+                            <option value="2026-08">August 2026</option>
+                            <option value="2026-09">September 2026</option>
+                            <option value="2026-10">October 2026</option>
+                            <option value="2026-11">November 2026</option>
+                            <option value="2026-12">December 2026</option>
+                            <option value="2027-01">January 2027</option>
+                        </select>
+                    </div>
+                    <div class="input-field">
+                        <label>Amount Saved (DHS)</label>
+                        <input type="number" id="savingsAmount" value="2000" placeholder="2000.00" step="0.01">
+                    </div>
+                </div>
+                <button onclick="addSavings()">Record Savings</button>
+
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <h3>Total Saved</h3>
+                        <div class="amount positive" id="totalSaved">0.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Target Amount</h3>
+                        <div class="amount" style="color: #667eea;">26,000.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Remaining</h3>
+                        <div class="amount" id="remainingSavings">26,000.00 DHS</div>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Months Completed</h3>
+                        <div class="amount" id="monthsCompleted">0 / 13</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <h3>Savings Progress</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="savingsProgress" style="width: 0%">0%</div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Monthly Savings Accumulation</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="savingsChart"></canvas>
+                    </div>
+                </div>
+
+                <table id="savingsTable">
+                    <thead>
+                        <tr>
+                            <th>Month-Year</th>
+                            <th>Amount (DHS)</th>
+                            <th>Cumulative (DHS)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // SUPABASE CONFIGURATION
+        // ============================================
+        // REMPLACEZ CES VALEURS PAR VOS PROPRES CREDENTIALS SUPABASE
+        const SUPABASE_URL = 'https://pequbiplyrqcwtjqcwkf.supabase.co'; // Ex: https://xxxxx.supabase.co
+        const SUPABASE_ANON_KEY = 'sb_publishable_adPYkCuCCm35YI33C4iSCw_y9m0bbLJ';
+
+        const {
+            createClient
+        } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ============================================
+        // GLOBAL VARIABLES
+        // ============================================
+        let currentUser = null;
+        let generalTransactions = [];
+        let rentalRecords = [];
+        let savingsRecords = [];
+
+        // Chart instances
+        let generalChart = null;
+        let rentalChart = null;
+        let savingsChart = null;
+        let dashIncomeExpenseChart = null;
+        let dashBalanceChart = null;
+        let dashRentalChart = null;
+        let dashSavingsChart = null;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Check if user is already logged in
+            const {
+                data: {
+                    session
+                }
+            } = await supabaseClient.auth.getSession();
+
+            if (session) {
+                currentUser = session.user;
+                showMainApp();
+                await loadAllData();
+            } else {
+                showAuthScreen();
+            }
+
+            // Set default dates
+            document.getElementById('generalMonth').value = new Date().toISOString().slice(0, 7);
+            document.getElementById('rentalMonth').value = new Date().toISOString().slice(0, 7);
+        });
+
+        // ============================================
+        // AUTHENTICATION FUNCTIONS
+        // ============================================
+        async function registerUser() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+
+            if (!email || !password) {
+                showAuthMessage('Please fill in all fields',
+                    'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAuthMessage('Password must be at least 6 characters', 'error');
+                return;
+            }
+
+            const {
+                data,
+                error
+            } = await supabaseClient.auth.signUp({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                showAuthMessage('Error: ' + error.message, 'error');
+            } else {
+                showAuthMessage('Account created! Please check your email to verify your account.', 'success');
+            }
+        }
+
+        async function loginUser() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+
+            if (!email || !password) {
+                showAuthMessage('Please fill in all fields', 'error');
+                return;
+            }
+
+            const {
+                data,
+                error
+            } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                showAuthMessage('Error: ' + error.message, 'error');
+            } else {
+                currentUser = data.user;
+                showMainApp();
+                await loadAllData();
+            }
+        }
+
+        async function logoutUser() {
+            const {
+                error
+            } = await supabaseClient.auth.signOut();
+
+            if (!error) {
+                currentUser = null;
+                generalTransactions = [];
+                rentalRecords = [];
+                savingsRecords = [];
+                showAuthScreen();
+            }
+        }
+
+        function showAuthMessage(message, type) {
+            const messageDiv = document.getElementById('authMessage');
+            messageDiv.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        function showAuthScreen() {
+            document.getElementById('authScreen').style.display = 'block';
+            document.getElementById('mainApp').style.display = 'none';
+        }
+
+        function showMainApp() {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            document.getElementById('userEmail').textContent = currentUser.email;
+        }
+
+        // ============================================
+        // DATA LOADING FUNCTIONS
+        // ============================================
+        async function loadAllData() {
+            await loadGeneralTransactions();
+            await loadRentalRecords();
+            await loadSavingsRecords();
+            updateAllDisplays();
+        }
+
+        async function loadGeneralTransactions() {
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('general_transactions')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('month', {
+                    ascending: true
+                });
+
+            if (!error && data) {
+                generalTransactions = data;
+            }
+        }
+
+        async function loadRentalRecords() {
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('rental_records')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('month', {
+                    ascending: true
+                });
+
+            if (!error && data) {
+                rentalRecords = data;
+            }
+        }
+
+        async function loadSavingsRecords() {
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('savings_records')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('month', {
+                    ascending: true
+                });
+
+            if (!error && data) {
+                savingsRecords = data;
+            }
+        }
+
+        // ============================================
+        // TAB FUNCTIONALITY
+        // ============================================
+        function openTab(evt, tabName) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+
+            evt.currentTarget.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+
+            // Update charts when switching tabs
+            if (tabName === 'dashboard') {
+                updateDashboard();
+            } else if (tabName === 'general') {
+                updateGeneralChart();
+            } else if (tabName === 'rental') {
+                updateRentalChart();
+            } else if (tabName === 'savings') {
+                updateSavingsChart();
+            }
+        }
+
+        // ============================================
+        // GENERAL TRANSACTIONS
+        // ============================================
+        async function addGeneralTransaction() {
+            const month = document.getElementById('generalMonth').value;
+            const desc = document.getElementById('generalDesc').value;
+            const type = document.getElementById('generalType').value;
+            const amount = parseFloat(document.getElementById('generalAmount').value);
+
+            if (!month || !desc || !amount) {
+                alert('Please fill all fields');
+                return;
+            }
+
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('general_transactions')
+                .insert([{
+                    user_id: currentUser.id,
+                    month: month,
+                    description: desc,
+                    type: type,
+                    amount: amount
+                }])
+                .select();
+
+            if (error) {
+                alert('Error adding transaction: ' + error.message);
+            } else {
+                document.getElementById('generalDesc').value = '';
+                document.getElementById('generalAmount').value = '';
+                await loadGeneralTransactions();
+                updateGeneralDisplay();
+                updateDashboard();
+            }
+        }
+
+        async function deleteGeneralTransaction(id) {
+            if (!confirm('Are you sure you want to delete this transaction?')) {
+                return;
+            }
+
+            const {
+                error
+            } = await supabaseClient
+                .from('general_transactions')
+                .delete()
+                .eq('id', id);
+
+            if (!error) {
+                await loadGeneralTransactions();
+                updateGeneralDisplay();
+                updateDashboard();
+            }
+        }
+
+        function updateGeneralDisplay() {
+            const tbody = document.querySelector('#generalTable tbody');
+            tbody.innerHTML = '';
+
+            let totalIncome = 0;
+            let totalExpenses = 0;
+
+            generalTransactions.forEach((trans) => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${trans.month}</td>
+                    <td>${trans.description}</td>
+                    <td style="color: ${trans.type === 'income' ? '#28a745' : '#dc3545'}">${trans.type.toUpperCase()}</td>
+                    <td>${parseFloat(trans.amount).toFixed(2)}</td>
+                    <td><button class="delete-btn" onclick="deleteGeneralTransaction('${trans.id}')">Delete</button></td>
+                `;
+
+                if (trans.type === 'income') {
+                    totalIncome += parseFloat(trans.amount);
+                } else {
+                    totalExpenses += parseFloat(trans.amount);
+                }
+            });
+
+            const netBalance = totalIncome - totalExpenses;
+
+            document.getElementById('totalIncome').textContent = totalIncome.toFixed(2) + ' DHS';
+            document.getElementById('totalExpenses').textContent = totalExpenses.toFixed(2) + ' DHS';
+            document.getElementById('netBalance').textContent = netBalance.toFixed(2) + ' DHS';
+            document.getElementById('netBalance').className = 'amount ' + (netBalance >= 0 ? 'positive' : 'negative');
+
+            updateGeneralChart();
+        }
+
+        function updateGeneralChart() {
+            const monthlyData = {};
+
+            generalTransactions.forEach(trans => {
+                if (!monthlyData[trans.month]) {
+                    monthlyData[trans.month] = {
+                        income: 0,
+                        expense: 0
+                    };
+                }
+                if (trans.type === 'income') {
+                    monthlyData[trans.month].income += parseFloat(trans.amount);
+                } else {
+                    monthlyData[trans.month].expense += parseFloat(trans.amount);
+                }
+            });
+
+            const months = Object.keys(monthlyData).sort();
+            const incomeData = months.map(m => monthlyData[m].income);
+            const expenseData = months.map(m => monthlyData[m].expense);
+
+            const ctx = document.getElementById('generalChart');
+            if (generalChart) {
+                generalChart.destroy();
+            }
+
+            generalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Income',
+                        data: incomeData,
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }, {
+                        label: 'Expenses',
+                        data: expenseData,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' DHS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================
+        // RENTAL INCOME TRACKER
+        // ============================================
+        async function addRentalRecord() {
+            const month = document.getElementById('rentalMonth').value;
+            const income = parseFloat(document.getElementById('rentalIncome').value) || 0;
+            const expense = parseFloat(document.getElementById('rentalExpense').value) || 0;
+            const expenseDesc = document.getElementById('rentalExpenseDesc').value || 'N/A';
+
+            if (!month) {
+                alert('Please select a month');
+                return;
+            }
+
+            // Check if month already exists
+            const existing = rentalRecords.find(r => r.month === month);
+
+            if (existing) {
+                if (!confirm('Record for this month already exists. Replace it?')) {
+                    return;
+                }
+
+                // Update existing record
+                const {
+                    error
+                } = await supabaseClient
+                    .from('rental_records')
+                    .update({
+                        income: income,
+                        expense: expense,
+                        expense_description: expenseDesc
+                    })
+                    .eq('id', existing.id);
+
+                if (error) {
+                    alert('Error updating record: ' + error.message);
+                    return;
+                }
+            } else {
+                // Insert new record
+                const {
+                    error
+                } = await supabaseClient
+                    .from('rental_records')
+                    .insert([{
+                        user_id: currentUser.id,
+                        month: month,
+                        income: income,
+                        expense: expense,
+                        expense_description: expenseDesc
+                    }]);
+
+                if (error) {
+                    alert('Error adding record: ' + error.message);
+                    return;
+                }
+            }
+
+            document.getElementById('rentalIncome').value = '';
+            document.getElementById('rentalExpense').value = '';
+            document.getElementById('rentalExpenseDesc').value = '';
+            await loadRentalRecords();
+            updateRentalDisplay();
+            updateDashboard();
+        }
+
+        async function deleteRentalRecord(id) {
+            if (!confirm('Are you sure you want to delete this record?')) {
+                return;
+            }
+
+            const {
+                error
+            } = await supabaseClient
+                .from('rental_records')
+                .delete()
+                .eq('id', id);
+
+            if (!error) {
+                await loadRentalRecords();
+                updateRentalDisplay();
+                updateDashboard();
+            }
+        }
+
+        function updateRentalDisplay() {
+            const tbody = document.querySelector('#rentalTable tbody');
+            tbody.innerHTML = '';
+
+            let totalRent = 0;
+            let totalRentalExpenses = 0;
+
+            rentalRecords.forEach((record) => {
+                const row = tbody.insertRow();
+                const net = parseFloat(record.income) - parseFloat(record.expense);
+
+                row.innerHTML = `
+                    <td>${record.month}</td>
+                    <td style="color: #28a745">${parseFloat(record.income).toFixed(2)}</td>
+                    <td style="color: #dc3545">${parseFloat(record.expense).toFixed(2)}</td>
+                    <td>${record.expense_description}</td>
+                    <td style="color: ${net >= 0 ? '#28a745' : '#dc3545'}">${net.toFixed(2)}</td>
+                    <td><button class="delete-btn" onclick="deleteRentalRecord('${record.id}')">Delete</button></td>
+                `;
+
+                totalRent += parseFloat(record.income);
+                totalRentalExpenses += parseFloat(record.expense);
+            });
+
+            const netRental = totalRent - totalRentalExpenses;
+            const loanBalance = 70000 - netRental;
+            const loanProgress = ((netRental / 70000) * 100).toFixed(1);
+
+            document.getElementById('totalRent').textContent = totalRent.toFixed(2) + ' DHS';
+            document.getElementById('totalRentalExpenses').textContent = totalRentalExpenses.toFixed(2) + ' DHS';
+            document.getElementById('netRental').textContent = netRental.toFixed(2) + ' DHS';
+            document.getElementById('netRental').className = 'amount ' + (netRental >= 0 ? 'positive' : 'negative');
+            document.getElementById('loanBalance').textContent = Math.max(0, loanBalance).toFixed(2) + ' DHS';
+
+            const progressBar = document.getElementById('loanProgress');
+            progressBar.style.width = Math.min(100, loanProgress) + '%';
+            progressBar.textContent = loanProgress + '%';
+
+            updateRentalChart();
+        }
+
+        function updateRentalChart() {
+            const months = rentalRecords.map(r => r.month).sort();
+            const rentData = [];
+            const expenseData = [];
+            let cumulativeNet = 0;
+            const loanBalanceData = [];
+
+            months.forEach(month => {
+                const record = rentalRecords.find(r => r.month === month);
+                rentData.push(parseFloat(record.income));
+                expenseData.push(parseFloat(record.expense));
+                const net = parseFloat(record.income) - parseFloat(record.expense);
+                cumulativeNet += net;
+                loanBalanceData.push(Math.max(0, 70000 - cumulativeNet));
+            });
+
+            const ctx = document.getElementById('rentalChart');
+            if (rentalChart) {
+                rentalChart.destroy();
+            }
+
+            rentalChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Rent Income',
+                        data: rentData,
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                        borderColor: '#28a745',
+                        borderWidth: 2
+                    }, {
+                        label: 'Expenses',
+                        data: expenseData,
+                        backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                        borderColor: '#dc3545',
+                        borderWidth: 2
+                    }, {
+                        label: 'Loan Balance',
+                        data: loanBalanceData,
+                        type: 'line',
+                        borderColor: '#ff6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' DHS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            position: 'left',
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================
+        // SAVINGS TRACKER
+        // ============================================
+        async function addSavings() {
+            const month = document.getElementById('savingsMonth').value;
+            const amount = parseFloat(document.getElementById('savingsAmount').value) || 0;
+
+            if (!month || amount <= 0) {
+                alert('Please select a month and enter a valid amount');
+                return;
+            }
+
+            // Check if month already exists
+            const existing = savingsRecords.find(r => r.month === month);
+
+            if (existing) {
+                if (!confirm('Record for this month already exists. Replace it?')) {
+                    return;
+                }
+
+                // Update existing record
+                const {
+                    error
+                } = await supabaseClient
+                    .from('savings_records')
+                    .update({
+                        amount: amount
+                    })
+                    .eq('id', existing.id);
+
+                if (error) {
+                    alert('Error updating record: ' + error.message);
+                    return;
+                }
+            } else {
+                // Insert new record
+                const {
+                    error
+                } = await supabaseClient
+                    .from('savings_records')
+                    .insert([{
+                        user_id: currentUser.id,
+                        month: month,
+                        amount: amount
+                    }]);
+
+                if (error) {
+                    alert('Error adding record: ' + error.message);
+                    return;
+                }
+            }
+
+            await loadSavingsRecords();
+            updateSavingsDisplay();
+            updateDashboard();
+        }
+
+        async function deleteSavings(id) {
+            if (!confirm('Are you sure you want to delete this record?')) {
+                return;
+            }
+
+            const {
+                error
+            } = await supabaseClient
+                .from('savings_records')
+                .delete()
+                .eq('id', id);
+
+            if (!error) {
+                await loadSavingsRecords();
+                updateSavingsDisplay();
+                updateDashboard();
+            }
+        }
+
+        function updateSavingsDisplay() {
+            const tbody = document.querySelector('#savingsTable tbody');
+            tbody.innerHTML = '';
+
+            let totalSaved = 0;
+            const targetAmount = 26000;
+
+            savingsRecords.forEach((record) => {
+                totalSaved += parseFloat(record.amount);
+                const row = tbody.insertRow();
+
+                row.innerHTML = `
+                    <td>${record.month}</td>
+                    <td style="color: #28a745">${parseFloat(record.amount).toFixed(2)}</td>
+                    <td style="color: #667eea; font-weight: bold">${totalSaved.toFixed(2)}</td>
+                    <td><button class="delete-btn" onclick="deleteSavings('${record.id}')">Delete</button></td>
+                `;
+            });
+
+            const remaining = targetAmount - totalSaved;
+            const progress = ((totalSaved / targetAmount) * 100).toFixed(1);
+
+            document.getElementById('totalSaved').textContent = totalSaved.toFixed(2) + ' DHS';
+            document.getElementById('remainingSavings').textContent = Math.max(0, remaining).toFixed(2) + ' DHS';
+            document.getElementById('monthsCompleted').textContent = savingsRecords.length + ' / 13';
+
+            const progressBar = document.getElementById('savingsProgress');
+            progressBar.style.width = Math.min(100, progress) + '%';
+            progressBar.textContent = progress + '%';
+
+            updateSavingsChart();
+        }
+
+        function updateSavingsChart() {
+            const months = savingsRecords.map(r => r.month).sort();
+            const monthlyData = [];
+            const cumulativeData = [];
+            let cumulative = 0;
+
+            months.forEach(month => {
+                const record = savingsRecords.find(r => r.month === month);
+                monthlyData.push(parseFloat(record.amount));
+                cumulative += parseFloat(record.amount);
+                cumulativeData.push(cumulative);
+            });
+
+            const ctx = document.getElementById('savingsChart');
+            if (savingsChart) {
+                savingsChart.destroy();
+            }
+
+            savingsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Monthly Savings',
+                        data: monthlyData,
+                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                        borderColor: '#667eea',
+                        borderWidth: 2
+                    }, {
+                        label: 'Cumulative Savings',
+                        data: cumulativeData,
+                        type: 'line',
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' DHS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================
+        // DASHBOARD
+        // ============================================
+        function updateDashboard() {
+            // Calculate totals
+            let totalIncome = 0;
+            let totalExpenses = 0;
+            generalTransactions.forEach(trans => {
+                if (trans.type === 'income') {
+                    totalIncome += parseFloat(trans.amount);
+                } else {
+                    totalExpenses += parseFloat(trans.amount);
+                }
+            });
+
+            let totalRent = 0;
+            let totalRentalExpenses = 0;
+            rentalRecords.forEach(record => {
+                totalRent += parseFloat(record.income);
+                totalRentalExpenses += parseFloat(record.expense);
+            });
+
+            let totalSaved = 0;
+            savingsRecords.forEach(record => {
+                totalSaved += parseFloat(record.amount);
+            });
+
+            const netBalance = totalIncome - totalExpenses;
+            const netRental = totalRent - totalRentalExpenses;
+            const loanRemaining = Math.max(0, 70000 - netRental);
+            const savingsProgress = ((totalSaved / 26000) * 100).toFixed(1);
+
+            // Get unique months for averaging
+            const uniqueMonths = new Set();
+            generalTransactions.forEach(t => uniqueMonths.add(t.month));
+            const monthCount = uniqueMonths.size || 1;
+
+            const avgIncome = totalIncome / monthCount;
+            const avgExpenses = totalExpenses / monthCount;
+
+            // Update dashboard summary
+            document.getElementById('dashTotalBalance').textContent = netBalance.toFixed(2) + ' DHS';
+            document.getElementById('dashTotalBalance').className = 'amount ' + (netBalance >= 0 ? 'positive' : 'negative');
+            document.getElementById('dashAvgIncome').textContent = avgIncome.toFixed(2) + ' DHS';
+            document.getElementById('dashAvgExpenses').textContent = avgExpenses.toFixed(2) + ' DHS';
+            document.getElementById('dashLoanRemaining').textContent = loanRemaining.toFixed(2) + ' DHS';
+            document.getElementById('dashTotalSavings').textContent = totalSaved.toFixed(2) + ' DHS';
+            document.getElementById('dashSavingsProgress').textContent = savingsProgress + '%';
+
+            // Update dashboard charts
+            updateDashIncomeExpenseChart();
+            updateDashBalanceChart();
+            updateDashRentalChart();
+            updateDashSavingsChart();
+        }
+
+        function updateDashIncomeExpenseChart() {
+            const monthlyData = {};
+
+            generalTransactions.forEach(trans => {
+                if (!monthlyData[trans.month]) {
+                    monthlyData[trans.month] = {
+                        income: 0,
+                        expense: 0
+                    };
+                }
+                if (trans.type === 'income') {
+                    monthlyData[trans.month].income += parseFloat(trans.amount);
+                } else {
+                    monthlyData[trans.month].expense += parseFloat(trans.amount);
+                }
+            });
+
+            const months = Object.keys(monthlyData).sort();
+            const incomeData = months.map(m => monthlyData[m].income);
+            const expenseData = months.map(m => monthlyData[m].expense);
+
+            const ctx = document.getElementById('dashIncomeExpenseChart');
+            if (dashIncomeExpenseChart) {
+                dashIncomeExpenseChart.destroy();
+            }
+
+            dashIncomeExpenseChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Income',
+                        data: incomeData,
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)',
+                        borderColor: '#28a745',
+                        borderWidth: 2
+                    }, {
+                        label: 'Expenses',
+                        data: expenseData,
+                        backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                        borderColor: '#dc3545',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDashBalanceChart() {
+            const monthlyData = {};
+
+            generalTransactions.forEach(trans => {
+                if (!monthlyData[trans.month]) {
+                    monthlyData[trans.month] = {
+                        income: 0,
+                        expense: 0
+                    };
+                }
+                if (trans.type === 'income') {
+                    monthlyData[trans.month].income += parseFloat(trans.amount);
+                } else {
+                    monthlyData[trans.month].expense += parseFloat(trans.amount);
+                }
+            });
+
+            const months = Object.keys(monthlyData).sort();
+            const balanceData = [];
+            let cumulativeBalance = 0;
+
+            months.forEach(month => {
+                const monthBalance = monthlyData[month].income - monthlyData[month].expense;
+                cumulativeBalance += monthBalance;
+                balanceData.push(cumulativeBalance);
+            });
+
+            const ctx = document.getElementById('dashBalanceChart');
+            if (dashBalanceChart) {
+                dashBalanceChart.destroy();
+            }
+
+            dashBalanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Cumulative Balance',
+                        data: balanceData,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDashRentalChart() {
+            const months = rentalRecords.map(r => r.month).sort();
+            let cumulativeNet = 0;
+            const cumulativeData = [];
+            const loanBalanceData = [];
+
+            months.forEach(month => {
+                const record = rentalRecords.find(r => r.month === month);
+                const net = parseFloat(record.income) - parseFloat(record.expense);
+                cumulativeNet += net;
+                cumulativeData.push(cumulativeNet);
+                loanBalanceData.push(Math.max(0, 70000 - cumulativeNet));
+            });
+
+            const ctx = document.getElementById('dashRentalChart');
+            if (dashRentalChart) {
+                dashRentalChart.destroy();
+            }
+
+            dashRentalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Cumulative Rental Income',
+                        data: cumulativeData,
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3
+                    }, {
+                        label: 'Loan Balance',
+                        data: loanBalanceData,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' DHS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDashSavingsChart() {
+            const months = savingsRecords.map(r => r.month).sort();
+            const cumulativeData = [];
+            let cumulative = 0;
+            const targetData = [];
+
+            months.forEach((month, index) => {
+                const record = savingsRecords.find(r => r.month === month);
+                cumulative += parseFloat(record.amount);
+                cumulativeData.push(cumulative);
+                targetData.push((index + 1) * 2000); // Target line
+            });
+
+            const ctx = document.getElementById('dashSavingsChart');
+            if (dashSavingsChart) {
+                dashSavingsChart.destroy();
+            }
+
+            dashSavingsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Actual Savings',
+                        data: cumulativeData,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 3
+                    }, {
+                        label: 'Target Savings',
+                        data: targetData,
+                        borderColor: '#ffc107',
+                        backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                        tension: 0.4,
+                        fill: false,
+                        borderWidth: 2,
+                        borderDash: [5, 5]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + ' DHS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 26000,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + ' DHS';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============================================
+        // UPDATE ALL DISPLAYS
+        // ============================================
+        function updateAllDisplays() {
+            updateGeneralDisplay();
+            updateRentalDisplay();
+            updateSavingsDisplay();
+            updateDashboard();
+        }
+    </script>
+</body>
+
+</html>
