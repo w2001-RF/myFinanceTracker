@@ -1,0 +1,61 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate Supabase configuration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$SUPABASE_URL" || {
+            echo "SUPABASE_URL is not configured"
+            exit 1
+          }
+
+          test -n "$SUPABASE_ANON_KEY" || {
+            echo "SUPABASE_ANON_KEY is not configured"
+            exit 1
+          }
+
+          URL_JSON=$(jq -Rn --arg value "$SUPABASE_URL" '$value')
+          KEY_JSON=$(jq -Rn --arg value "$SUPABASE_ANON_KEY" '$value')
+
+          cat > supabase-config.js <<EOF
+          window.SUPABASE_CONFIG = {
+            url: $URL_JSON,
+            anonKey: $KEY_JSON
+          };
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
