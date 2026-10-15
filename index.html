@@ -762,7 +762,19 @@
         const SUPABASE_URL = window.SUPABASE_CONFIG.url;
         const SUPABASE_ANON_KEY = window.SUPABASE_CONFIG.anonKey;
 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // The session (and its refresh token) is persisted in localStorage and refreshed
+        // automatically, so users stay signed in across page reloads and browser restarts.
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+            }
+        });
+
+        // Users are signed out after this much time without opening/using the app
+        const INACTIVITY_LIMIT_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+        const ACTIVITY_KEY = 'ft_last_active';
 
         // ============================================
         // GLOBAL VARIABLES
@@ -816,21 +828,102 @@
         }
 
         // ============================================
+        // SESSION ACTIVITY (30-day inactivity limit)
+        // ============================================
+        let lastActivityWrite = 0;
+
+        function touchActivity(force = false) {
+            const now = Date.now();
+            if (!force && now - lastActivityWrite < 60 * 1000) return; // throttle writes
+            lastActivityWrite = now;
+            try {
+                localStorage.setItem(ACTIVITY_KEY, String(now));
+            } catch (e) { /* storage unavailable: session still works, limit is not enforced */ }
+        }
+
+        function readLastActivity() {
+            try {
+                const value = Number(localStorage.getItem(ACTIVITY_KEY));
+                return Number.isFinite(value) && value > 0 ? value : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearActivity() {
+            lastActivityWrite = 0;
+            try {
+                localStorage.removeItem(ACTIVITY_KEY);
+            } catch (e) { /* ignore */ }
+        }
+
+        function inactivityExpired() {
+            const last = readLastActivity();
+            return last !== null && Date.now() - last > INACTIVITY_LIMIT_MS;
+        }
+
+        function resetAppState() {
+            currentUser = null;
+            generalTransactions = [];
+            rentalRecords = [];
+            savingsRecords = [];
+        }
+
+        // Set while this tab signs out on purpose, so the SIGNED_OUT event isn't reported as unexpected
+        let expectedSignOut = false;
+
+        // Fires when the session ends for any reason: logout (in any tab), a refresh token that was
+        // revoked because the account signed in elsewhere, or an expired session.
+        // Note: don't await other Supabase calls inside this callback.
+        supabaseClient.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_OUT') {
+                const wasSignedIn = currentUser !== null;
+                resetAppState();
+                clearActivity();
+                showAuthScreen();
+                if (wasSignedIn && !expectedSignOut) {
+                    showAuthMessage('You were signed out because your session ended or you signed in on another device. Please log in again.', 'error');
+                }
+            }
+        });
+
+        ['click', 'keydown', 'visibilitychange'].forEach(evt =>
+            document.addEventListener(evt, () => {
+                if (currentUser) touchActivity();
+            }, { passive: true }));
+
+        // ============================================
         // INITIALIZATION
         // ============================================
         document.addEventListener('DOMContentLoaded', async function() {
-            // Check if user is already logged in
+            // Restore the persisted session (refreshes the access token if needed)
             const {
                 data: {
                     session
                 }
             } = await supabaseClient.auth.getSession();
 
-            if (session) {
+            if (session && inactivityExpired()) {
+                expectedSignOut = true;
+                await supabaseClient.auth.signOut({
+                    scope: 'local'
+                });
+                expectedSignOut = false;
+                clearActivity();
+                resetAppState();
+                showAuthScreen();
+                showAuthMessage('You were signed out after 30 days of inactivity. Please log in again.', 'error');
+            } else if (session) {
                 currentUser = session.user;
+                touchActivity(true);
                 showMainApp();
                 await loadAllData();
             } else {
+                if (readLastActivity() !== null) {
+                    // We had a session before but it can no longer be restored (expired or revoked elsewhere)
+                    clearActivity();
+                    showAuthMessage('Your session has ended. Please log in again.', 'error');
+                }
                 showAuthScreen();
             }
 
@@ -893,23 +986,42 @@
                 showAuthMessage('Error: ' + error.message, 'error');
             } else {
                 currentUser = data.user;
+                touchActivity(true);
                 showMainApp();
+
+                // Only one active session: sign out every other device/browser. Their next token
+                // refresh fails and they are returned to the login screen.
+                const {
+                    error: othersError
+                } = await supabaseClient.auth.signOut({
+                    scope: 'others'
+                });
+                if (othersError) {
+                    console.warn('Could not end other sessions:', othersError.message);
+                }
+
                 await loadAllData();
             }
         }
 
         async function logoutUser() {
+            expectedSignOut = true;
             const {
                 error
-            } = await supabaseClient.auth.signOut();
+            } = await supabaseClient.auth.signOut({
+                scope: 'local'
+            });
+            expectedSignOut = false;
 
-            if (!error) {
-                currentUser = null;
-                generalTransactions = [];
-                rentalRecords = [];
-                savingsRecords = [];
-                showAuthScreen();
+            if (error) {
+                alert('Error signing out: ' + error.message);
+                return;
             }
+
+            // onAuthStateChange also handles this; repeat here so the UI updates even if the event is missed
+            resetAppState();
+            clearActivity();
+            showAuthScreen();
         }
 
         function showAuthMessage(message, type) {

@@ -14,3 +14,15 @@ cp supabase-config.example.js supabase-config.js   # then fill in your values
 npx serve .                                         # or any static server
 ```
 `supabase-config.js` is git-ignored. The anon key is public by design; Row Level Security is what protects the data.
+
+## Tests
+```sh
+npm install
+npm test
+```
+Tests (Vitest + jsdom) load `index.html` with a mocked Supabase client and a stubbed Chart.js, so they never touch a real database or the network. CI runs them before every deploy.
+
+## Sessions
+- Users stay signed in across reloads and browser restarts (the session is stored in the browser and refreshed automatically).
+- They are asked to log in again after **30 days without opening the app** (`INACTIVITY_LIMIT_MS` in `index.html`).
+- Only one active session: logging in on another device/browser ends all other sessions, which return to the login screen. Tabs in the same browser share one session.
