@@ -31,3 +31,20 @@ Tests (Vitest + jsdom) load `index.html` with a mocked Supabase client and a stu
 - Income vs expenses with **quick transactions** (save a transaction once, add it in one tap), search/filter and CSV export.
 - Rental income and savings: add, **edit**, delete and **reset** records; editable **loan amount** and **savings target**; **sub-targets** shown as milestones on the progress bar.
 - Light/dark theme (follows the device) and a layout that works down to ~240px wide screens.
+
+## Owner (admin) console and privacy
+The app owner can manage **app-wide settings only**: maintenance mode and message, an announcement banner, whether the sign-up button is shown, and the default loan/target for new users. Every change is written to an audit log.
+
+**Privacy by design (compliance):**
+- Users' financial data is protected by Row Level Security with "own rows only" policies. No admin policy exists on any content table, so an admin account is just a normal user for data access: it sees its own records and nothing else.
+- The only cross-user information available to the admin is two **aggregate counts** (total accounts, new accounts in 30 days) through `admin_overview()`. No emails, identities or content are returned.
+- Admin rights live in `app_admins`, which the app cannot modify (no insert/update/delete privileges); admins are created only from the SQL editor. The audit log is read-only for admins and written by a database trigger.
+- `supabase/tests/admin_isolation.sql` is a read-only script that proves an admin cannot read other users' rows. Run it after every schema change.
+
+**Setup:** apply `supabase/migrations/20261017000000_admin_console.sql`, then make yourself the owner (once):
+```sql
+insert into public.app_admins (user_id)
+select id from auth.users where email = 'owner@example.com';
+```
+
+**Limits to be aware of:** maintenance mode, the sign-up button and the announcement are enforced in the page; to block API sign-ups also turn sign-ups off in Supabase (Authentication). Whoever holds the Supabase project credentials (dashboard or service-role key) can technically read the database; keep those credentials out of the app, restrict who has them, and cover this in your privacy policy / data-processing terms.
