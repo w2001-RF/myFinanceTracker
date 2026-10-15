@@ -3,7 +3,7 @@
 Personal finance tracker (income/expenses, rental income vs. loan, savings goal) built as a static page with Chart.js and Supabase.
 
 ## Setup
-1. Create a Supabase project and run [`schema.sql`](schema.sql) in the SQL editor (creates tables, unique `(user_id, month)` constraints and Row Level Security policies).
+1. In the Supabase SQL editor: for a new project run [`schema.sql`](schema.sql); for an existing database run [`supabase/migrations/20261015000000_harden_schema.sql`](supabase/migrations/20261015000000_harden_schema.sql) (adds constraints, defaults and Row Level Security policies).
 2. In Supabase > Authentication > URL Configuration, set the Site URL to your GitHub Pages URL. Consider disabling public sign-ups once your account exists.
 3. Add repository secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY` (Settings > Secrets and variables > Actions).
 4. Push to `main`; the workflow generates `supabase-config.js` and deploys `dist/` to GitHub Pages.
