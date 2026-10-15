@@ -14,3 +14,10 @@ cp supabase-config.example.js supabase-config.js   # then fill in your values
 npx serve .                                         # or any static server
 ```
 `supabase-config.js` is git-ignored. The anon key is public by design; Row Level Security is what protects the data.
+
+## Tests
+```sh
+npm install
+npm test
+```
+Tests (Vitest + jsdom) load `index.html` with a mocked Supabase client and a stubbed Chart.js, so they never touch a real database or the network. CI runs them before every deploy.
