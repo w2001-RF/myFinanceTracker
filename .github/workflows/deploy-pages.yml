@@ -65,7 +65,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir dist
-          cp index.html favicon.ico supabase-config.js dist/
+          cp index.html styles.css favicon.ico supabase-config.js dist/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
