@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Personal Finance Tracker</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" crossorigin="anonymous"></script>
     <script src="./supabase-config.js"></script>
     <style>
         * {
@@ -434,18 +434,18 @@
     <div id="authScreen" class="auth-container">
         <h2>🔐 Login to Finance Tracker</h2>
         <div id="authMessage"></div>
-        <div class="auth-form">
+        <form class="auth-form" onsubmit="event.preventDefault(); loginUser();">
             <div class="input-field">
-                <label>Email</label>
-                <input type="email" id="authEmail" placeholder="your@email.com">
+                <label for="authEmail">Email</label>
+                <input type="email" id="authEmail" placeholder="your@email.com" autocomplete="email" required>
             </div>
             <div class="input-field">
-                <label>Password</label>
-                <input type="password" id="authPassword" placeholder="••••••••">
+                <label for="authPassword">Password</label>
+                <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" required>
             </div>
-            <button onclick="loginUser()">Login</button>
-            <button class="btn-secondary" onclick="registerUser()">Create Account</button>
-        </div>
+            <button type="submit" id="loginBtn">Login</button>
+            <button type="button" class="btn-secondary" id="registerBtn" onclick="registerUser()">Create Account</button>
+        </form>
     </div>
 
     <!-- Main Application -->
@@ -754,9 +754,13 @@
         // ============================================
         // SUPABASE CONFIGURATION
         // ============================================
+        if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+            document.body.innerHTML = '<p style="padding:20px;font-family:sans-serif">Missing <code>supabase-config.js</code>. Copy <code>supabase-config.example.js</code> to <code>supabase-config.js</code> and fill in your Supabase URL and anon key (see README).</p>';
+            throw new Error('Supabase configuration missing');
+        }
         const SUPABASE_URL = window.SUPABASE_CONFIG.url;
         const SUPABASE_ANON_KEY = window.SUPABASE_CONFIG.anonKey;
-    
+
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // ============================================
@@ -775,6 +779,40 @@
         let dashBalanceChart = null;
         let dashRentalChart = null;
         let dashSavingsChart = null;
+
+        // ============================================
+        // HELPERS
+        // ============================================
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[ch]));
+        }
+
+        // Current month in local time (YYYY-MM), not UTC
+        function currentMonthLocal() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        }
+
+        // Run an async action with the triggering buttons disabled to prevent double submits
+        let busy = false;
+        async function withBusy(fn) {
+            if (busy) return;
+            busy = true;
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(b => b.disabled = true);
+            try {
+                await fn();
+            } finally {
+                buttons.forEach(b => b.disabled = false);
+                busy = false;
+            }
+        }
 
         // ============================================
         // INITIALIZATION
@@ -796,8 +834,8 @@
             }
 
             // Set default dates
-            document.getElementById('generalMonth').value = new Date().toISOString().slice(0, 7);
-            document.getElementById('rentalMonth').value = new Date().toISOString().slice(0, 7);
+            document.getElementById('generalMonth').value = currentMonthLocal();
+            document.getElementById('rentalMonth').value = currentMonthLocal();
         });
 
         // ============================================
@@ -813,8 +851,8 @@
                 return;
             }
 
-            if (password.length < 6) {
-                showAuthMessage('Password must be at least 6 characters', 'error');
+            if (password.length < 10) {
+                showAuthMessage('Password must be at least 10 characters', 'error');
                 return;
             }
 
@@ -875,7 +913,7 @@
 
         function showAuthMessage(message, type) {
             const messageDiv = document.getElementById('authMessage');
-            messageDiv.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${message}</div>`;
+            messageDiv.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}" role="alert">${escapeHtml(message)}</div>`;
             setTimeout(() => {
                 messageDiv.innerHTML = '';
             }, 5000);
@@ -896,61 +934,46 @@
         // DATA LOADING FUNCTIONS
         // ============================================
         async function loadAllData() {
-            await loadGeneralTransactions();
-            await loadRentalRecords();
-            await loadSavingsRecords();
+            await Promise.all([
+                loadGeneralTransactions(),
+                loadRentalRecords(),
+                loadSavingsRecords()
+            ]);
             updateAllDisplays();
         }
 
-        async function loadGeneralTransactions() {
+        async function fetchTable(table) {
             const {
                 data,
                 error
             } = await supabaseClient
-                .from('general_transactions')
+                .from(table)
                 .select('*')
                 .eq('user_id', currentUser.id)
                 .order('month', {
                     ascending: true
                 });
 
-            if (!error && data) {
-                generalTransactions = data;
+            if (error) {
+                alert('Error loading ' + table.replace('_', ' ') + ': ' + error.message);
+                return null;
             }
+            return data;
+        }
+
+        async function loadGeneralTransactions() {
+            const data = await fetchTable('general_transactions');
+            if (data) generalTransactions = data;
         }
 
         async function loadRentalRecords() {
-            const {
-                data,
-                error
-            } = await supabaseClient
-                .from('rental_records')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('month', {
-                    ascending: true
-                });
-
-            if (!error && data) {
-                rentalRecords = data;
-            }
+            const data = await fetchTable('rental_records');
+            if (data) rentalRecords = data;
         }
 
         async function loadSavingsRecords() {
-            const {
-                data,
-                error
-            } = await supabaseClient
-                .from('savings_records')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('month', {
-                    ascending: true
-                });
-
-            if (!error && data) {
-                savingsRecords = data;
-            }
+            const data = await fetchTable('savings_records');
+            if (data) savingsRecords = data;
         }
 
         // ============================================
@@ -981,14 +1004,23 @@
         // ============================================
         // GENERAL TRANSACTIONS
         // ============================================
-        async function addGeneralTransaction() {
+        function addGeneralTransaction() {
+            return withBusy(addGeneralTransactionImpl);
+        }
+
+        async function addGeneralTransactionImpl() {
             const month = document.getElementById('generalMonth').value;
-            const desc = document.getElementById('generalDesc').value;
+            const desc = document.getElementById('generalDesc').value.trim();
             const type = document.getElementById('generalType').value;
             const amount = parseFloat(document.getElementById('generalAmount').value);
 
-            if (!month || !desc || !amount) {
+            if (!month || !desc || !Number.isFinite(amount)) {
                 alert('Please fill all fields');
+                return;
+            }
+
+            if (amount <= 0) {
+                alert('Amount must be greater than 0');
                 return;
             }
 
@@ -1017,7 +1049,11 @@
             }
         }
 
-        async function deleteGeneralTransaction(id) {
+        function deleteGeneralTransaction(id) {
+            return withBusy(() => deleteGeneralTransactionImpl(id));
+        }
+
+        async function deleteGeneralTransactionImpl(id) {
             if (!confirm('Are you sure you want to delete this transaction?')) {
                 return;
             }
@@ -1027,9 +1063,12 @@
             } = await supabaseClient
                 .from('general_transactions')
                 .delete()
-                .eq('id', id);
+                .eq('id', id)
+                .eq('user_id', currentUser.id);
 
-            if (!error) {
+            if (error) {
+                alert('Error deleting transaction: ' + error.message);
+            } else {
                 await loadGeneralTransactions();
                 updateGeneralDisplay();
                 updateDashboard();
@@ -1046,11 +1085,11 @@
             generalTransactions.forEach((trans) => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
-                    <td>${trans.month}</td>
-                    <td>${trans.description}</td>
-                    <td style="color: ${trans.type === 'income' ? '#28a745' : '#dc3545'}">${trans.type.toUpperCase()}</td>
+                    <td>${escapeHtml(trans.month)}</td>
+                    <td>${escapeHtml(trans.description)}</td>
+                    <td style="color: ${trans.type === 'income' ? '#28a745' : '#dc3545'}">${escapeHtml(String(trans.type).toUpperCase())}</td>
                     <td>${parseFloat(trans.amount).toFixed(2)}</td>
-                    <td><button class="delete-btn" onclick="deleteGeneralTransaction('${trans.id}')">Delete</button></td>
+                    <td><button class="delete-btn" data-id="${escapeHtml(trans.id)}" onclick="deleteGeneralTransaction(this.dataset.id)">Delete</button></td>
                 `;
 
                 if (trans.type === 'income') {
@@ -1148,59 +1187,54 @@
         // ============================================
         // RENTAL INCOME TRACKER
         // ============================================
-        async function addRentalRecord() {
+        function addRentalRecord() {
+            return withBusy(addRentalRecordImpl);
+        }
+
+        async function addRentalRecordImpl() {
             const month = document.getElementById('rentalMonth').value;
             const income = parseFloat(document.getElementById('rentalIncome').value) || 0;
             const expense = parseFloat(document.getElementById('rentalExpense').value) || 0;
-            const expenseDesc = document.getElementById('rentalExpenseDesc').value || 'N/A';
+            const expenseDesc = document.getElementById('rentalExpenseDesc').value.trim() || 'N/A';
 
             if (!month) {
                 alert('Please select a month');
                 return;
             }
 
-            // Check if month already exists
-            const existing = rentalRecords.find(r => r.month === month);
+            if (income < 0 || expense < 0) {
+                alert('Income and expense cannot be negative');
+                return;
+            }
 
-            if (existing) {
-                if (!confirm('Record for this month already exists. Replace it?')) {
-                    return;
-                }
+            if (income === 0 && expense === 0) {
+                alert('Enter an income or an expense amount');
+                return;
+            }
 
-                // Update existing record
-                const {
-                    error
-                } = await supabaseClient
-                    .from('rental_records')
-                    .update({
-                        income: income,
-                        expense: expense,
-                        expense_description: expenseDesc
-                    })
-                    .eq('id', existing.id);
+            if (rentalRecords.some(r => r.month === month) &&
+                !confirm('Record for this month already exists. Replace it?')) {
+                return;
+            }
 
-                if (error) {
-                    alert('Error updating record: ' + error.message);
-                    return;
-                }
-            } else {
-                // Insert new record
-                const {
-                    error
-                } = await supabaseClient
-                    .from('rental_records')
-                    .insert([{
-                        user_id: currentUser.id,
-                        month: month,
-                        income: income,
-                        expense: expense,
-                        expense_description: expenseDesc
-                    }]);
+            // Upsert on (user_id, month) – requires the unique constraint in schema.sql
+            const {
+                error
+            } = await supabaseClient
+                .from('rental_records')
+                .upsert([{
+                    user_id: currentUser.id,
+                    month: month,
+                    income: income,
+                    expense: expense,
+                    expense_description: expenseDesc
+                }], {
+                    onConflict: 'user_id,month'
+                });
 
-                if (error) {
-                    alert('Error adding record: ' + error.message);
-                    return;
-                }
+            if (error) {
+                alert('Error saving record: ' + error.message);
+                return;
             }
 
             document.getElementById('rentalIncome').value = '';
@@ -1211,7 +1245,11 @@
             updateDashboard();
         }
 
-        async function deleteRentalRecord(id) {
+        function deleteRentalRecord(id) {
+            return withBusy(() => deleteRentalRecordImpl(id));
+        }
+
+        async function deleteRentalRecordImpl(id) {
             if (!confirm('Are you sure you want to delete this record?')) {
                 return;
             }
@@ -1221,9 +1259,12 @@
             } = await supabaseClient
                 .from('rental_records')
                 .delete()
-                .eq('id', id);
+                .eq('id', id)
+                .eq('user_id', currentUser.id);
 
-            if (!error) {
+            if (error) {
+                alert('Error deleting record: ' + error.message);
+            } else {
                 await loadRentalRecords();
                 updateRentalDisplay();
                 updateDashboard();
@@ -1242,12 +1283,12 @@
                 const net = parseFloat(record.income) - parseFloat(record.expense);
 
                 row.innerHTML = `
-                    <td>${record.month}</td>
+                    <td>${escapeHtml(record.month)}</td>
                     <td style="color: #28a745">${parseFloat(record.income).toFixed(2)}</td>
                     <td style="color: #dc3545">${parseFloat(record.expense).toFixed(2)}</td>
-                    <td>${record.expense_description}</td>
+                    <td>${escapeHtml(record.expense_description)}</td>
                     <td style="color: ${net >= 0 ? '#28a745' : '#dc3545'}">${net.toFixed(2)}</td>
-                    <td><button class="delete-btn" onclick="deleteRentalRecord('${record.id}')">Delete</button></td>
+                    <td><button class="delete-btn" data-id="${escapeHtml(record.id)}" onclick="deleteRentalRecord(this.dataset.id)">Delete</button></td>
                 `;
 
                 totalRent += parseFloat(record.income);
@@ -1256,7 +1297,7 @@
 
             const netRental = totalRent - totalRentalExpenses;
             const loanBalance = 70000 - netRental;
-            const loanProgress = ((netRental / 70000) * 100).toFixed(1);
+            const loanProgress = Math.max(0, (netRental / 70000) * 100).toFixed(1);
 
             document.getElementById('totalRent').textContent = totalRent.toFixed(2) + ' DHS';
             document.getElementById('totalRentalExpenses').textContent = totalRentalExpenses.toFixed(2) + ' DHS';
@@ -1364,7 +1405,11 @@
         // ============================================
         // SAVINGS TRACKER
         // ============================================
-        async function addSavings() {
+        function addSavings() {
+            return withBusy(addSavingsImpl);
+        }
+
+        async function addSavingsImpl() {
             const month = document.getElementById('savingsMonth').value;
             const amount = parseFloat(document.getElementById('savingsAmount').value) || 0;
 
@@ -1373,44 +1418,27 @@
                 return;
             }
 
-            // Check if month already exists
-            const existing = savingsRecords.find(r => r.month === month);
+            if (savingsRecords.some(r => r.month === month) &&
+                !confirm('Record for this month already exists. Replace it?')) {
+                return;
+            }
 
-            if (existing) {
-                if (!confirm('Record for this month already exists. Replace it?')) {
-                    return;
-                }
+            // Upsert on (user_id, month) – requires the unique constraint in schema.sql
+            const {
+                error
+            } = await supabaseClient
+                .from('savings_records')
+                .upsert([{
+                    user_id: currentUser.id,
+                    month: month,
+                    amount: amount
+                }], {
+                    onConflict: 'user_id,month'
+                });
 
-                // Update existing record
-                const {
-                    error
-                } = await supabaseClient
-                    .from('savings_records')
-                    .update({
-                        amount: amount
-                    })
-                    .eq('id', existing.id);
-
-                if (error) {
-                    alert('Error updating record: ' + error.message);
-                    return;
-                }
-            } else {
-                // Insert new record
-                const {
-                    error
-                } = await supabaseClient
-                    .from('savings_records')
-                    .insert([{
-                        user_id: currentUser.id,
-                        month: month,
-                        amount: amount
-                    }]);
-
-                if (error) {
-                    alert('Error adding record: ' + error.message);
-                    return;
-                }
+            if (error) {
+                alert('Error saving record: ' + error.message);
+                return;
             }
 
             await loadSavingsRecords();
@@ -1418,7 +1446,11 @@
             updateDashboard();
         }
 
-        async function deleteSavings(id) {
+        function deleteSavings(id) {
+            return withBusy(() => deleteSavingsImpl(id));
+        }
+
+        async function deleteSavingsImpl(id) {
             if (!confirm('Are you sure you want to delete this record?')) {
                 return;
             }
@@ -1428,9 +1460,12 @@
             } = await supabaseClient
                 .from('savings_records')
                 .delete()
-                .eq('id', id);
+                .eq('id', id)
+                .eq('user_id', currentUser.id);
 
-            if (!error) {
+            if (error) {
+                alert('Error deleting record: ' + error.message);
+            } else {
                 await loadSavingsRecords();
                 updateSavingsDisplay();
                 updateDashboard();
@@ -1449,19 +1484,19 @@
                 const row = tbody.insertRow();
 
                 row.innerHTML = `
-                    <td>${record.month}</td>
+                    <td>${escapeHtml(record.month)}</td>
                     <td style="color: #28a745">${parseFloat(record.amount).toFixed(2)}</td>
                     <td style="color: #667eea; font-weight: bold">${totalSaved.toFixed(2)}</td>
-                    <td><button class="delete-btn" onclick="deleteSavings('${record.id}')">Delete</button></td>
+                    <td><button class="delete-btn" data-id="${escapeHtml(record.id)}" onclick="deleteSavings(this.dataset.id)">Delete</button></td>
                 `;
             });
 
             const remaining = targetAmount - totalSaved;
-            const progress = ((totalSaved / targetAmount) * 100).toFixed(1);
+            const progress = Math.max(0, (totalSaved / targetAmount) * 100).toFixed(1);
 
             document.getElementById('totalSaved').textContent = totalSaved.toFixed(2) + ' DHS';
             document.getElementById('remainingSavings').textContent = Math.max(0, remaining).toFixed(2) + ' DHS';
-            document.getElementById('monthsCompleted').textContent = savingsRecords.length + ' / 13';
+            document.getElementById('monthsCompleted').textContent = Math.min(savingsRecords.length, 13) + ' / 13';
 
             const progressBar = document.getElementById('savingsProgress');
             progressBar.style.width = Math.min(100, progress) + '%';
@@ -1856,7 +1891,7 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            max: 26000,
+                            suggestedMax: 26000,
                             ticks: {
                                 callback: function(value) {
                                     return value.toLocaleString() + ' DHS';

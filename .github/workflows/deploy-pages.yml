@@ -51,10 +51,15 @@ jobs:
           };
           EOF
 
+      - name: Assemble site
+        run: |
+          mkdir dist
+          cp index.html favicon.ico supabase-config.js dist/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment
