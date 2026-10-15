@@ -843,6 +843,37 @@ td.actions .btn + .btn {
     flex-wrap: wrap;
 }
 
+/* ---------- Announcement banner & admin ---------- */
+.announcement {
+    position: sticky;
+    top: 0;
+    z-index: 150;
+    padding: 8px 14px;
+    text-align: center;
+    font-size: .9rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--savings);
+}
+
+.check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.check-row input {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+}
+
+.check-row label {
+    font-size: .92rem;
+}
+
 /* ---------- Tablet / phone ---------- */
 @media (max-width: 720px) {
     .container {

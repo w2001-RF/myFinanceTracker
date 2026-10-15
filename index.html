@@ -17,6 +17,19 @@
 <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+    <div id="announcement" class="announcement" role="status" hidden></div>
+
+    <!-- Maintenance Screen (shown to non-admin users while maintenance mode is on) -->
+    <div id="maintenanceScreen" class="auth-screen" style="display: none;">
+        <div class="auth-card">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">🛠️</div>
+                <h1>Under maintenance</h1>
+                <p id="maintenanceText">We'll be back shortly.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-block" onclick="logoutUser()">Logout</button>
+        </div>
+    </div>
 
     <!-- Authentication Screen -->
     <div id="authScreen" class="auth-screen">
@@ -60,6 +73,7 @@
             <button class="tab" role="tab" aria-selected="false" aria-controls="general" aria-label="Income vs Expenses" onclick="openTab(event, 'general')"><span class="tab-icon" aria-hidden="true">💵</span><span class="tab-label">Cash flow</span></button>
             <button class="tab" role="tab" aria-selected="false" aria-controls="rental" aria-label="Rental Income" onclick="openTab(event, 'rental')"><span class="tab-icon" aria-hidden="true">🏠</span><span class="tab-label">Rental</span></button>
             <button class="tab" role="tab" aria-selected="false" aria-controls="savings" aria-label="Savings" onclick="openTab(event, 'savings')"><span class="tab-icon" aria-hidden="true">💎</span><span class="tab-label">Savings</span></button>
+            <button class="tab" id="adminTab" role="tab" aria-selected="false" aria-controls="admin" aria-label="Owner console" onclick="openTab(event, 'admin')" hidden><span class="tab-icon" aria-hidden="true">🛡️</span><span class="tab-label">Admin</span></button>
         </nav>
 
         <main id="main">
@@ -463,6 +477,75 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Owner console (only rendered for admins; app-wide settings, never user content) -->
+            <div id="admin" class="tab-content" role="tabpanel">
+                <div class="section">
+                    <h2>🛡️ Owner console</h2>
+                    <p class="hint">App-wide settings only. By design this console cannot read any user's financial data, and every change is recorded in the audit log.</p>
+
+                    <div class="summary-box">
+                        <div class="summary-item">
+                            <h3>Accounts</h3>
+                            <div class="amount" id="adminTotalAccounts">—</div>
+                        </div>
+                        <div class="summary-item">
+                            <h3>New (30 days)</h3>
+                            <div class="amount" id="adminNewAccounts">—</div>
+                        </div>
+                    </div>
+
+                    <form id="adminForm" class="card" style="padding: 14px;" onsubmit="event.preventDefault(); saveAppSettings();">
+                        <h3 class="card-title">App settings</h3>
+                        <div class="check-row">
+                            <input type="checkbox" id="adminMaintenance">
+                            <label for="adminMaintenance">Maintenance mode (non-admin users see a maintenance screen)</label>
+                        </div>
+                        <div class="input-group">
+                            <div class="input-field">
+                                <label for="adminMaintenanceMessage">Maintenance message</label>
+                                <input type="text" id="adminMaintenanceMessage" maxlength="300" placeholder="We'll be back shortly.">
+                            </div>
+                        </div>
+                        <div class="check-row">
+                            <input type="checkbox" id="adminSignups">
+                            <label for="adminSignups">Allow new sign-ups (hides “Create Account”; also disable sign-ups in Supabase to block API sign-ups)</label>
+                        </div>
+                        <div class="input-group">
+                            <div class="input-field">
+                                <label for="adminAnnouncement">Announcement banner (empty = none)</label>
+                                <input type="text" id="adminAnnouncement" maxlength="300" placeholder="e.g., Scheduled maintenance on Sunday">
+                            </div>
+                            <div class="input-field">
+                                <label for="adminDefaultLoan">Default loan amount (DHS)</label>
+                                <input type="number" id="adminDefaultLoan" step="0.01" min="0" inputmode="decimal">
+                            </div>
+                            <div class="input-field">
+                                <label for="adminDefaultTarget">Default savings target (DHS)</label>
+                                <input type="number" id="adminDefaultTarget" step="0.01" min="0" inputmode="decimal">
+                            </div>
+                        </div>
+                        <p class="hint">Defaults apply to users who have not set their own loan amount or target.</p>
+                        <div class="form-actions">
+                            <button type="submit" class="btn" id="adminSubmit">Save settings</button>
+                        </div>
+                    </form>
+
+                    <h3 class="card-title" style="margin-top: 18px;">Audit log (last 20 changes)</h3>
+                    <div class="table-wrap">
+                        <table id="auditTable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">When</th>
+                                    <th scope="col">Action</th>
+                                    <th scope="col">Changed</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -510,6 +593,18 @@
         let savingsMilestones = [];
         let milestonesAvailable = true;
         let editingMilestoneId = null;
+
+        // App-wide settings (public, read by everyone; only admins can change them)
+        const DEFAULT_APP_SETTINGS = {
+            maintenance_mode: false,
+            maintenance_message: '',
+            announcement: '',
+            signups_enabled: true,
+            default_loan_amount: DEFAULT_LOAN_AMOUNT,
+            default_savings_target: DEFAULT_SAVINGS_TARGET
+        };
+        let appSettings = { ...DEFAULT_APP_SETTINGS };
+        let isAdmin = false;
 
         // Row currently being edited in each form (null = adding a new record)
         let editingGeneralId = null;
@@ -654,9 +749,11 @@
             rentalRecords = [];
             savingsRecords = [];
             transactionTemplates = [];
-            loanAmount = DEFAULT_LOAN_AMOUNT;
-            savingsTarget = DEFAULT_SAVINGS_TARGET;
+            loanAmount = Number(appSettings.default_loan_amount);
+            savingsTarget = Number(appSettings.default_savings_target);
             savingsMilestones = [];
+            isAdmin = false;
+            document.getElementById('adminTab').hidden = true;
             editingGeneralId = editingRentalId = editingSavingsId = editingMilestoneId = null;
         }
 
@@ -696,6 +793,8 @@
                 Chart.defaults.plugins.legend.labels.boxWidth = 12;
             }
 
+            await loadAppSettings();
+
             // Restore the persisted session (refreshes the access token if needed)
             const {
                 data: {
@@ -717,7 +816,7 @@
                 currentUser = session.user;
                 touchActivity(true);
                 showMainApp();
-                await loadAllData();
+                await afterSignIn();
             } else {
                 if (readLastActivity() !== null) {
                     // We had a session before but it can no longer be restored (expired or revoked elsewhere)
@@ -800,7 +899,7 @@
                     console.warn('Could not end other sessions:', othersError.message);
                 }
 
-                await loadAllData();
+                await afterSignIn();
             }
         }
 
@@ -835,12 +934,161 @@
         function showAuthScreen() {
             document.getElementById('authScreen').style.display = 'block';
             document.getElementById('mainApp').style.display = 'none';
+            document.getElementById('maintenanceScreen').style.display = 'none';
+        }
+
+        function showMaintenance() {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'none';
+            document.getElementById('maintenanceScreen').style.display = 'block';
+            document.getElementById('maintenanceText').textContent =
+                appSettings.maintenance_message || "We'll be back shortly.";
         }
 
         function showMainApp() {
             document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('maintenanceScreen').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
             document.getElementById('userEmail').textContent = currentUser.email;
+        }
+
+        // ============================================
+        // APP SETTINGS & OWNER CONSOLE
+        // ============================================
+        async function loadAppSettings() {
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('app_settings')
+                .select('*');
+
+            // Table missing (migration not applied) or unreachable: keep built-in defaults
+            appSettings = (!error && data && data[0]) ? { ...DEFAULT_APP_SETTINGS, ...data[0] } : { ...DEFAULT_APP_SETTINGS };
+            applyAppSettings();
+        }
+
+        function applyAppSettings() {
+            const banner = document.getElementById('announcement');
+            const text = (appSettings.announcement || '').trim();
+            banner.textContent = text;
+            banner.hidden = text === '';
+            document.getElementById('registerBtn').hidden = appSettings.signups_enabled === false;
+        }
+
+        async function detectAdmin() {
+            try {
+                const {
+                    data,
+                    error
+                } = await supabaseClient.rpc('is_admin');
+                isAdmin = !error && data === true;
+            } catch (e) {
+                isAdmin = false;
+            }
+            document.getElementById('adminTab').hidden = !isAdmin;
+        }
+
+        // Runs after a session is established (restored or fresh login)
+        async function afterSignIn() {
+            await loadAppSettings();
+            await detectAdmin();
+            if (appSettings.maintenance_mode && !isAdmin) {
+                showMaintenance();
+                return;
+            }
+            await loadAllData();
+        }
+
+        function renderAdminForm() {
+            document.getElementById('adminMaintenance').checked = appSettings.maintenance_mode === true;
+            document.getElementById('adminMaintenanceMessage').value = appSettings.maintenance_message || '';
+            document.getElementById('adminSignups').checked = appSettings.signups_enabled !== false;
+            document.getElementById('adminAnnouncement').value = appSettings.announcement || '';
+            document.getElementById('adminDefaultLoan').value = appSettings.default_loan_amount;
+            document.getElementById('adminDefaultTarget').value = appSettings.default_savings_target;
+        }
+
+        async function refreshAdminConsole() {
+            if (!isAdmin) return;
+            renderAdminForm();
+
+            // Aggregate counts only: the function never returns identities or content
+            const {
+                data: overview,
+                error: overviewError
+            } = await supabaseClient.rpc('admin_overview');
+            document.getElementById('adminTotalAccounts').textContent =
+                !overviewError && overview ? String(overview.total_accounts) : '—';
+            document.getElementById('adminNewAccounts').textContent =
+                !overviewError && overview ? String(overview.new_accounts_30d) : '—';
+
+            const {
+                data: log,
+                error: logError
+            } = await supabaseClient
+                .from('admin_audit_log')
+                .select('*')
+                .order('created_at', {
+                    ascending: false
+                })
+                .limit(20);
+
+            const tbody = document.querySelector('#auditTable tbody');
+            if (logError || !log || log.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="3">' +
+                    (logError ? 'Audit log unavailable.' : 'No changes recorded yet.') + '</td></tr>';
+                return;
+            }
+            tbody.innerHTML = log.map(entry => {
+                const changed = entry.details && Array.isArray(entry.details.changed) ? entry.details.changed.join(', ') : '';
+                return `<tr>
+                    <td data-label="When">${escapeHtml(new Date(entry.created_at).toLocaleString())}</td>
+                    <td data-label="Action">${escapeHtml(entry.action)}</td>
+                    <td data-label="Changed">${escapeHtml(changed)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function saveAppSettings() {
+            return withBusy(saveAppSettingsImpl);
+        }
+
+        async function saveAppSettingsImpl() {
+            if (!isAdmin) return;
+
+            const loan = parseFloat(document.getElementById('adminDefaultLoan').value);
+            const target = parseFloat(document.getElementById('adminDefaultTarget').value);
+            if (!Number.isFinite(loan) || loan <= 0 || !Number.isFinite(target) || target <= 0) {
+                alert('Default loan amount and savings target must be greater than 0');
+                return;
+            }
+
+            const update = {
+                maintenance_mode: document.getElementById('adminMaintenance').checked,
+                maintenance_message: document.getElementById('adminMaintenanceMessage').value.trim().slice(0, 300),
+                signups_enabled: document.getElementById('adminSignups').checked,
+                announcement: document.getElementById('adminAnnouncement').value.trim().slice(0, 300),
+                default_loan_amount: loan,
+                default_savings_target: target
+            };
+
+            const {
+                error
+            } = await supabaseClient
+                .from('app_settings')
+                .update(update)
+                .eq('id', true);
+
+            if (error) {
+                alert('Error saving settings: ' + error.message);
+                return;
+            }
+
+            appSettings = { ...appSettings, ...update };
+            applyAppSettings();
+            await refreshAdminConsole();
+            showToast('Settings saved');
         }
 
         // ============================================
@@ -918,6 +1166,8 @@
                 updateRentalChart();
             } else if (tabName === 'savings') {
                 updateSavingsChart();
+            } else if (tabName === 'admin') {
+                refreshAdminConsole();
             }
         }
 
@@ -1779,8 +2029,8 @@
             } else {
                 settingsAvailable = true;
                 const row = (data || [])[0];
-                loanAmount = row ? parseFloat(row.loan_amount) : DEFAULT_LOAN_AMOUNT;
-                savingsTarget = row ? parseFloat(row.savings_target) : DEFAULT_SAVINGS_TARGET;
+                loanAmount = row ? parseFloat(row.loan_amount) : Number(appSettings.default_loan_amount);
+                savingsTarget = row ? parseFloat(row.savings_target) : Number(appSettings.default_savings_target);
             }
             renderSettings();
         }
