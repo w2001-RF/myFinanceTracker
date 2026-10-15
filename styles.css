@@ -844,6 +844,19 @@ td.actions .btn + .btn {
 }
 
 /* ---------- Advice ---------- */
+/* ---------- Announcement banner & admin ---------- */
+.announcement {
+    position: sticky;
+    top: 0;
+    z-index: 150;
+    padding: 8px 14px;
+    text-align: center;
+    font-size: .9rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--savings);
+}
+
 .check-row {
     display: flex;
     align-items: flex-start;

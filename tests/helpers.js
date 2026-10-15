@@ -14,7 +14,7 @@ export const USER = { id: 'user-1', email: 'me@example.com' };
  * result of an operation (select/insert/upsert/update/delete), e.g. to simulate errors.
  * Every operation is recorded in `calls`.
  */
-export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null, functions = {} } = {}) {
+export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null, rpc = {} } = {}) {
   const calls = [];
   const authListeners = [];
 
@@ -29,6 +29,7 @@ export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, ses
       delete: () => ((call.op = 'delete'), b),
       eq: (col, val) => ((call.filters[col] = val), b),
       order: () => b,
+      limit: () => b,
       then(resolve, reject) {
         const result = overrides[`${table}:${call.op}`] ??
           { data: call.op === 'select' ? (tables[table] ?? []) : null, error: null };
@@ -43,6 +44,7 @@ export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, ses
     functions: {
       invoke: vi.fn(async (name) => functions[name] ?? { data: null, error: { message: 'not deployed', context: { status: 404 } } }),
     },
+    rpc: vi.fn(async (name) => rpc[name] ?? { data: null, error: null }),
     auth: {
       getSession: vi.fn(async () => ({ data: { session } })),
       onAuthStateChange: vi.fn((cb) => {
@@ -78,7 +80,11 @@ export async function loadApp({ supabase = createMockSupabase(), config = { url:
     },
   });
   const { window } = dom;
-  await new Promise((r) => setTimeout(r, 10)); // let DOMContentLoaded handler finish
+  // Let the DOMContentLoaded handler finish: wait for its first request, then a few more ticks
+  for (let i = 0; config && i < 200 && !supabase.calls.some((c) => c.table === 'app_settings'); i++) {
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  await new Promise((r) => setTimeout(r, 15));
 
   const app = {
     window,
