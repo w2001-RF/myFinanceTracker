@@ -139,3 +139,45 @@ export function extractAdvice(payload: unknown): string | null {
   const message = isObj(first) && isObj(first.message) ? first.message.content : null;
   return typeof message === 'string' && message.trim() !== '' ? message.trim().slice(0, 4000) : null;
 }
+
+// ---------------------------------------------------------------------------
+// Monthly cron helpers
+// ---------------------------------------------------------------------------
+
+/** 'YYYY-MM' in UTC: the period an advice text belongs to. */
+export function currentPeriod(now: Date = new Date()): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Constant-time string comparison, so the cron secret cannot be guessed byte by byte. */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+/** True when the request carries `Authorization: Bearer <secret>`. */
+export function isAuthorizedCron(header: string | null | undefined, secret: string | undefined | null): boolean {
+  if (!secret || !header) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match !== null && timingSafeEqual(match[1], secret);
+}
+
+export interface OptedInUser {
+  user_id: string;
+  include_labels?: boolean | null;
+  summary: unknown;
+}
+
+/** Opted-in users that still have no advice for this period, capped so one run stays within the time limit. */
+export function pickUsers(optedIn: OptedInUser[], alreadyDone: Set<string>, max: number): OptedInUser[] {
+  return optedIn.filter((u) => u.summary !== null && u.summary !== undefined && !alreadyDone.has(u.user_id)).slice(0, max);
+}
+
+/** Without the opt-in, descriptions never reach the AI even if a snapshot contains them. */
+export function applyLabelPolicy(summary: Summary, includeLabels: boolean | null | undefined): Summary {
+  return includeLabels === true ? summary : { ...summary, top_expenses: [] };
+}

@@ -34,6 +34,15 @@ jobs:
           npm ci
           npm test
 
+      # AI tests are optional: a failure is reported as a warning but never blocks the deploy.
+      # Skip them entirely by setting the repository variable RUN_AI_TESTS to "false"
+      # (Settings > Secrets and variables > Actions > Variables).
+      - name: Run AI tests (optional)
+        if: ${{ vars.RUN_AI_TESTS != 'false' }}
+        continue-on-error: true
+        run: |
+          npm run test:ai || { echo "::warning title=AI tests failed::The optional AI tests failed. The deploy continues."; exit 1; }
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
