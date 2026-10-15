@@ -14,7 +14,7 @@ export const USER = { id: 'user-1', email: 'me@example.com' };
  * result of an operation (select/insert/upsert/update/delete), e.g. to simulate errors.
  * Every operation is recorded in `calls`.
  */
-export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null } = {}) {
+export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null, functions = {} } = {}) {
   const calls = [];
   const authListeners = [];
 
@@ -40,6 +40,9 @@ export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, ses
 
   const client = {
     from: (table) => builder(table),
+    functions: {
+      invoke: vi.fn(async (name) => functions[name] ?? { data: null, error: { message: 'not deployed', context: { status: 404 } } }),
+    },
     auth: {
       getSession: vi.fn(async () => ({ data: { session } })),
       onAuthStateChange: vi.fn((cb) => {
