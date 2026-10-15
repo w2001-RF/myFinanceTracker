@@ -73,6 +73,7 @@
             <button class="tab" role="tab" aria-selected="false" aria-controls="general" aria-label="Income vs Expenses" onclick="openTab(event, 'general')"><span class="tab-icon" aria-hidden="true">💵</span><span class="tab-label">Cash flow</span></button>
             <button class="tab" role="tab" aria-selected="false" aria-controls="rental" aria-label="Rental Income" onclick="openTab(event, 'rental')"><span class="tab-icon" aria-hidden="true">🏠</span><span class="tab-label">Rental</span></button>
             <button class="tab" role="tab" aria-selected="false" aria-controls="savings" aria-label="Savings" onclick="openTab(event, 'savings')"><span class="tab-icon" aria-hidden="true">💎</span><span class="tab-label">Savings</span></button>
+            <button class="tab" role="tab" aria-selected="false" aria-controls="advice" aria-label="Advice" onclick="openTab(event, 'advice')"><span class="tab-icon" aria-hidden="true">💡</span><span class="tab-label">Advice</span></button>
             <button class="tab" id="adminTab" role="tab" aria-selected="false" aria-controls="admin" aria-label="Owner console" onclick="openTab(event, 'admin')" hidden><span class="tab-icon" aria-hidden="true">🛡️</span><span class="tab-label">Admin</span></button>
         </nav>
 
@@ -486,17 +487,27 @@
                     <div id="insightList" class="insights"></div>
 
                     <div class="card" style="padding: 14px; margin-top: 16px;">
-                        <h3 class="card-title">✨ AI recommendations</h3>
-                        <p class="hint">Sends an anonymous summary (monthly totals and goal progress: no name, email or notes) to a free AI service and shows personalised tips. This is general information, not professional financial advice.</p>
+                        <h3 class="card-title">✨ Monthly AI advice</h3>
+                        <p class="hint">Once a month, an AI service reviews an anonymous summary of your numbers (monthly totals and goal progress: no name, email or notes) and prepares personalised tips. Here you always see the latest saved advice. General information, not professional financial advice.</p>
                         <div class="check-row">
-                            <input type="checkbox" id="aiIncludeLabels">
+                            <input type="checkbox" id="aiOptIn" onchange="toggleAiOptIn()">
+                            <label for="aiOptIn">Prepare monthly AI advice for me</label>
+                        </div>
+                        <div class="check-row">
+                            <input type="checkbox" id="aiIncludeLabels" onchange="changeAiLabels()">
                             <label for="aiIncludeLabels">Also share my top 5 expense descriptions (optional, off by default)</label>
                         </div>
+                        <p id="aiUnavailable" class="hint" hidden>Monthly AI advice needs the latest database migration (see README).</p>
                         <div class="form-actions">
-                            <button type="button" class="btn" id="aiAdviceBtn" onclick="getAiAdvice()">✨ Get AI advice</button>
+                            <button type="button" class="btn" id="aiAdviceBtn" onclick="loadLatestAdvice()">Show my latest advice</button>
+                            <button type="button" class="btn btn-danger" id="aiDeleteBtn" onclick="deleteSavedAdvice()">Delete saved advice</button>
                         </div>
                         <div id="aiAdvice" class="ai-advice" aria-live="polite" hidden></div>
                         <p id="aiMeta" class="hint" style="margin: 8px 0 0;"></p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Owner console (only rendered for admins; app-wide settings, never user content) -->
             <div id="admin" class="tab-content" role="tabpanel">
                 <div class="section">
@@ -613,7 +624,9 @@
         let milestonesAvailable = true;
         let editingMilestoneId = null;
         const SAVINGS_DEADLINE = '2027-01';
-        const AI_CONSENT_KEY = 'ft_ai_consent';
+        const AI_SNAPSHOT_MAX_AGE_MS = 12 * 60 * 60 * 1000; // refresh the shared summary at most twice a day
+        let aiSettings = { enabled: false, include_labels: false, summary_at: null };
+        let aiSettingsAvailable = true;
 
         // App-wide settings (public, read by everyone; only admins can change them)
         const DEFAULT_APP_SETTINGS = {
@@ -776,6 +789,9 @@
             document.getElementById('aiAdvice').hidden = true;
             document.getElementById('aiAdvice').innerHTML = '';
             document.getElementById('aiMeta').textContent = '';
+            aiSettings = { enabled: false, include_labels: false, summary_at: null };
+            document.getElementById('aiOptIn').checked = false;
+            document.getElementById('aiIncludeLabels').checked = false;
             isAdmin = false;
             document.getElementById('adminTab').hidden = true;
             editingGeneralId = editingRentalId = editingSavingsId = editingMilestoneId = null;
@@ -1156,18 +1172,118 @@
             };
         }
 
-        function hasAiConsent() {
-            try {
-                return localStorage.getItem(AI_CONSENT_KEY) === 'yes';
-            } catch (e) {
-                return false;
+        // ---- Monthly AI advice: opt-in, shared summary, latest saved advice ----
+        async function loadAiSettings() {
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from('ai_advice_settings')
+                .select('enabled, include_labels, summary_at')
+                .eq('user_id', currentUser.id);
+
+            if (error) {
+                // Usually means the migration has not been applied yet: feature stays off, app keeps working
+                aiSettingsAvailable = false;
+                console.warn('Monthly AI advice unavailable:', error.message);
+            } else {
+                aiSettingsAvailable = true;
+                const row = (data || [])[0];
+                aiSettings = row ?
+                    { enabled: row.enabled === true, include_labels: row.include_labels === true, summary_at: row.summary_at || null } :
+                    { enabled: false, include_labels: false, summary_at: null };
             }
+            renderAiSettings();
         }
 
-        function rememberAiConsent() {
-            try {
-                localStorage.setItem(AI_CONSENT_KEY, 'yes');
-            } catch (e) { /* ask again next time */ }
+        function renderAiSettings() {
+            const optIn = document.getElementById('aiOptIn');
+            const labels = document.getElementById('aiIncludeLabels');
+            optIn.checked = aiSettings.enabled;
+            labels.checked = aiSettings.include_labels;
+            optIn.disabled = !aiSettingsAvailable;
+            labels.disabled = !aiSettingsAvailable;
+            document.getElementById('aiUnavailable').hidden = aiSettingsAvailable;
+        }
+
+        // Saves the opt-in. When enabled, the anonymous summary is stored with it for the monthly job;
+        // when disabled, the shared summary is erased.
+        async function persistAiSettings(enabled, includeLabels) {
+            const row = {
+                user_id: currentUser.id,
+                enabled: enabled,
+                include_labels: includeLabels,
+                summary: null,
+                summary_at: null
+            };
+            if (enabled && generalTransactions.length > 0) {
+                row.summary = buildAdviceSummary(includeLabels);
+                row.summary_at = new Date().toISOString();
+            }
+            const {
+                error
+            } = await supabaseClient
+                .from('ai_advice_settings')
+                .upsert([row], {
+                    onConflict: 'user_id'
+                });
+            if (!error) {
+                aiSettings = { enabled: enabled, include_labels: includeLabels, summary_at: row.summary_at };
+            }
+            return error;
+        }
+
+        // Keeps the shared summary reasonably fresh for users who opted in (runs after data loads)
+        async function syncAdviceSnapshot() {
+            if (!aiSettingsAvailable || !aiSettings.enabled || generalTransactions.length === 0) return;
+            const last = aiSettings.summary_at ? Date.parse(aiSettings.summary_at) : 0;
+            if (Date.now() - last < AI_SNAPSHOT_MAX_AGE_MS) return;
+            const error = await persistAiSettings(true, aiSettings.include_labels);
+            if (error) console.warn('Could not refresh the AI summary:', error.message);
+        }
+
+        function toggleAiOptIn() {
+            return withBusy(toggleAiOptInImpl);
+        }
+
+        async function toggleAiOptInImpl() {
+            const optIn = document.getElementById('aiOptIn');
+            const wanted = optIn.checked;
+            const includeLabels = document.getElementById('aiIncludeLabels').checked;
+
+            if (wanted && !confirm('Turn on monthly AI advice?\n\n' +
+                    'Once a month an AI service will receive an anonymous summary of your finances: monthly income/expense totals and loan/savings progress.\n' +
+                    'Not shared: your name, email, notes or account id (expense descriptions only if you tick that option).\n\n' +
+                    'You can turn this off or delete the saved advice at any time.')) {
+                optIn.checked = false;
+                return;
+            }
+
+            const error = await persistAiSettings(wanted, wanted && includeLabels);
+            if (error) {
+                alert('Error saving your choice: ' + error.message);
+                optIn.checked = !wanted;
+                return;
+            }
+
+            renderAiSettings();
+            showToast(wanted ? 'Monthly AI advice turned on' : 'Monthly AI advice turned off and the shared summary deleted');
+        }
+
+        function changeAiLabels() {
+            return withBusy(changeAiLabelsImpl);
+        }
+
+        async function changeAiLabelsImpl() {
+            const box = document.getElementById('aiIncludeLabels');
+            if (!aiSettings.enabled) return; // only matters once the monthly advice is on
+            const error = await persistAiSettings(true, box.checked);
+            if (error) {
+                alert('Error saving your choice: ' + error.message);
+                box.checked = !box.checked;
+                return;
+            }
+            showToast(box.checked ? 'Expense descriptions will be shared' : 'Expense descriptions will not be shared');
         }
 
         // Text -> safe HTML: escape first, then allow only bullets and **bold**
@@ -1202,52 +1318,66 @@
             box.innerHTML = html;
         }
 
-        function getAiAdvice() {
-            return withBusy(getAiAdviceImpl);
-        }
-
-        async function getAiAdviceImpl() {
-            if (generalTransactions.length === 0) {
-                alert('Add some income and expense transactions first, so the advice has something to work with.');
-                return;
-            }
-
-            if (!hasAiConsent()) {
-                if (!confirm('Send an anonymous summary of your finances to a free AI service?\n\n' +
-                        'Sent: monthly income/expense totals, loan and savings progress.\n' +
-                        'Not sent: your name, email, notes or account id.\n\nContinue?')) {
-                    return;
-                }
-                rememberAiConsent();
-            }
-
-            const includeLabels = document.getElementById('aiIncludeLabels').checked;
-            showAdviceMessage('<p>Analysing your numbers…</p>');
+        // Shows the latest advice saved by the monthly job. This never triggers a new AI request.
+        async function loadLatestAdvice() {
+            showAdviceMessage('<p>Loading your latest advice…</p>');
             document.getElementById('aiMeta').textContent = '';
 
             const {
                 data,
                 error
-            } = await supabaseClient.functions.invoke('ai-advice', {
-                body: buildAdviceSummary(includeLabels)
-            });
+            } = await supabaseClient.functions.invoke('ai-advice');
 
-            if (error || !data || !data.advice) {
-                const status = error && error.context && error.context.status;
+            if (error) {
+                const status = error.context && error.context.status;
                 const messages = {
-                    429: 'You have reached today\'s limit for AI advice. Try again tomorrow; the quick insights above are always available.',
                     401: 'Your session expired. Please log in again.',
-                    503: 'AI advice is not set up yet. The quick insights above still work.',
-                    502: 'The AI service is busy or unavailable right now. Please try again in a few minutes.'
+                    404: 'Monthly AI advice is not set up yet. The quick insights above still work.',
+                    503: 'Advice is temporarily unavailable. Please try again later.'
                 };
-                showAdviceMessage('<p>' + escapeHtml(messages[status] || 'Could not get AI advice right now. Please try again later.') + '</p>', true);
+                showAdviceMessage('<p>' + escapeHtml(messages[status] || 'Could not load your advice right now. Please try again later.') + '</p>', true);
+                return;
+            }
+
+            if (!data || !data.advice) {
+                showAdviceMessage('<p>' + (aiSettings.enabled ?
+                    'No advice saved yet. Your first advice is prepared at the next monthly run (usually in the first days of the month).' :
+                    'No advice yet. Turn on “Prepare monthly AI advice for me” above to receive it.') + '</p>');
                 return;
             }
 
             showAdviceMessage(formatAdvice(data.advice));
-            if (typeof data.remaining === 'number') {
-                document.getElementById('aiMeta').textContent = data.remaining + ' AI advice request(s) left today.';
+            const when = data.generated_at ? new Date(data.generated_at).toLocaleDateString() : '';
+            document.getElementById('aiMeta').textContent =
+                'Prepared ' + (when ? 'on ' + when + ' ' : '') + 'for ' + (data.period || 'this month') + '. New advice is prepared once a month.';
+        }
+
+        function deleteSavedAdvice() {
+            return withBusy(deleteSavedAdviceImpl);
+        }
+
+        async function deleteSavedAdviceImpl() {
+            if (!confirm('Delete all your saved AI advice? New advice will only be prepared at the next monthly run.')) {
+                return;
             }
+
+            const {
+                error
+            } = await supabaseClient
+                .from('ai_advice_cache')
+                .delete()
+                .eq('user_id', currentUser.id);
+
+            if (error) {
+                alert('Error deleting saved advice: ' + error.message);
+                return;
+            }
+
+            const box = document.getElementById('aiAdvice');
+            box.hidden = true;
+            box.innerHTML = '';
+            document.getElementById('aiMeta').textContent = '';
+            showToast('Saved advice deleted');
         }
 
         // ============================================
@@ -1399,9 +1529,11 @@
                 loadSavingsRecords(),
                 loadTemplates(),
                 loadSettings(),
-                loadMilestones()
+                loadMilestones(),
+                loadAiSettings()
             ]);
             updateAllDisplays();
+            await syncAdviceSnapshot();
         }
 
         async function fetchTable(table) {
@@ -1466,6 +1598,7 @@
                 updateSavingsChart();
             } else if (tabName === 'advice') {
                 renderInsights();
+                loadLatestAdvice();
             } else if (tabName === 'admin') {
                 refreshAdminConsole();
             }

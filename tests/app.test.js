@@ -343,3 +343,23 @@ describe('session persistence', () => {
     expect(app.window.localStorage.getItem('ft_last_active')).toBeNull();
   });
 });
+
+describe('page structure', () => {
+  it('has a tab button for every tab panel, and every panel is a direct child of <main>', async () => {
+    const { document } = await loadApp();
+    const panels = [...document.querySelectorAll('.tab-content')];
+    expect(panels.length).toBeGreaterThanOrEqual(5);
+    for (const panel of panels) {
+      expect(panel.parentElement.tagName, `#${panel.id} is nested inside another element`).toBe('MAIN');
+      expect(document.querySelector(`.tab[aria-controls="${panel.id}"]`), `no tab button for #${panel.id}`).not.toBeNull();
+    }
+  });
+
+  it('opens a panel when its tab is clicked', async () => {
+    const app = await loadApp();
+    await app.login();
+    app.document.querySelector('.tab[aria-controls="savings"]').click();
+    expect(app.document.getElementById('savings').classList.contains('active')).toBe(true);
+    expect(app.document.getElementById('dashboard').classList.contains('active')).toBe(false);
+  });
+});

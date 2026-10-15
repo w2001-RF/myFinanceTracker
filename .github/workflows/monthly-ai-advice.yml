@@ -1,0 +1,32 @@
+name: Monthly AI advice
+
+# Triggers the ai-advice-cron Edge Function once a month. The function is idempotent (it only creates advice
+# for users who do not have it yet this month), so the schedule also runs on days 2 and 3 to pick up anyone
+# left over when the free AI tier's rate limit stopped a run early.
+on:
+  schedule:
+    - cron: '0 6 1-3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call ai-advice-cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::notice::SUPABASE_URL or CRON_SECRET is not configured; skipping."
+            exit 0
+          fi
+
+          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 150 -X POST             "$SUPABASE_URL/functions/v1/ai-advice-cron"             -H "Authorization: Bearer $CRON_SECRET"             -H "Content-Type: application/json"             -d '{}')
+
+          echo "HTTP $status"
+          cat response.json; echo
+          test "$status" = "200"

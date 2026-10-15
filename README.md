@@ -32,24 +32,28 @@ Tests (Vitest + jsdom) load `index.html` with a mocked Supabase client and a stu
 - Rental income and savings: add, **edit**, delete and **reset** records; editable **loan amount** and **savings target**; **sub-targets** shown as milestones on the progress bar.
 - Light/dark theme (follows the device) and a layout that works down to ~240px wide screens.
 
-## Advice and AI recommendations
+## Advice and monthly AI advice
 The **Advice** tab has two parts:
 - **Quick insights**: rule-based tips (savings rate, rising expenses, loan repayment pace, savings vs deadline, next sub-target) computed in the browser. No network, always available.
-- **AI recommendations**: a Supabase Edge Function (`supabase/functions/ai-advice`) calls a free OpenAI-compatible LLM API and returns personalised tips. The API key is stored as a Supabase secret, never in the page.
+- **Monthly AI advice**: users can opt in. Once a month a scheduled job asks a free OpenAI-compatible LLM API for personalised recommendations and saves them. The app only ever shows the **latest saved advice**: opening the tab or calling the `ai-advice` function never triggers a new AI request, it returns the cached value.
 
-**Privacy:** the page sends only an anonymous summary (monthly income/expense totals, loan and savings progress). No name, email, account id or notes; expense descriptions are shared only if the user ticks the option. The user is asked for consent before the first request, the function validates and re-builds the payload, nothing is stored (only a timestamp for the daily quota) and the answer is shown as plain text.
+How it works:
+- `ai-advice-cron` (Edge Function) is called by a scheduler on the 1st-3rd of each month (GitHub Actions workflow `monthly-ai-advice.yml`, or `pg_cron`). It is protected by `CRON_SECRET` and is idempotent: it only creates advice for opted-in users who have none for the current month, so reruns are safe.
+- `ai-advice` (Edge Function) is read-only: it returns the signed-in user's most recent row from `ai_advice_cache`.
+- The API key (`AI_API_KEY`) lives only in Supabase secrets, never in the page.
 
-**Setup:**
-1. Run `supabase/migrations/20261018000000_ai_advice_usage.sql`.
-2. Get a free API key from an OpenAI-compatible provider (for example [Groq](https://console.groq.com), Google Gemini's OpenAI-compatible endpoint, or OpenRouter `:free` models). Free-tier limits change, so check the provider's current limits.
-3. Deploy:
-```sh
-supabase secrets set AI_API_KEY=your-key
-# optional: AI_BASE_URL (default https://api.groq.com/openai/v1), AI_MODEL (default llama-3.3-70b-versatile),
-#           AI_DAILY_LIMIT (default 5 per user per 24h), ALLOWED_ORIGIN (e.g. https://you.github.io)
-supabase functions deploy ai-advice
-```
-Until the function is deployed the AI button shows a friendly "not set up yet" message and the quick insights keep working.
+**Privacy:** AI advice is off by default. When a user opts in (after a consent prompt) the app stores an anonymous summary (monthly totals, loan and savings progress; expense descriptions only if ticked) in `ai_advice_settings`. The cron job reads only that table, never transactions, rental or savings records, re-validates the summary before use, and logs only counts. Users can turn it off (which erases their shared summary) and delete their saved advice at any time; both tables are protected by Row Level Security.
+
+**Setup** (details in the deployment steps you were given):
+1. Run `supabase/migrations/20261019000000_ai_monthly_cache.sql`.
+2. Set secrets: `AI_API_KEY`, `CRON_SECRET` (and optionally `AI_BASE_URL`, `AI_MODEL`, `AI_CRON_MAX_USERS`, `AI_CRON_DELAY_MS`, `ALLOWED_ORIGIN`).
+3. Deploy: `supabase functions deploy ai-advice` and `supabase functions deploy ai-advice-cron --no-verify-jwt`.
+4. Add the GitHub repository secrets `SUPABASE_URL` and `CRON_SECRET` (same value as the Supabase secret) so `monthly-ai-advice.yml` can run. Test it once from Actions > Monthly AI advice > Run workflow.
+
+Free AI tiers (for example Groq, Google Gemini's OpenAI-compatible endpoint, OpenRouter `:free` models) change their limits, so check your provider's current limits.
+
+**Tests:** `npm test` runs the core tests; `npm run test:ai` runs the AI tests; `npm run test:all` runs everything. In CI the AI tests are optional: they never block a deploy, and you can skip them with the repository variable `RUN_AI_TESTS=false`.
+
 ## Owner (admin) console and privacy
 The app owner can manage **app-wide settings only**: maintenance mode and message, an announcement banner, whether the sign-up button is shown, and the default loan/target for new users. Every change is written to an audit log.
 
