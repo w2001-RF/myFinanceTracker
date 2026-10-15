@@ -265,3 +265,81 @@ describe('savings records', () => {
     expect(app.supabase.ops('savings_records', 'delete')[0].filters).toEqual({ id: 's1', user_id: USER.id });
   });
 });
+
+describe('session persistence', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const session = { user: USER };
+
+  it('keeps the user signed in across reloads (restores the stored session)', async () => {
+    const supabase = createMockSupabase({ session });
+    const app = await loadApp({ supabase, lastActive: Date.now() - 5 * DAY });
+    expect(app.document.getElementById('mainApp').style.display).toBe('block');
+    expect(app.document.getElementById('authScreen').style.display).toBe('none');
+    expect(supabase.client.auth.signOut).not.toHaveBeenCalled();
+    expect(Number(app.window.localStorage.getItem('ft_last_active'))).toBeGreaterThan(Date.now() - 5000);
+  });
+
+  it('keeps the user signed in after 29 days of inactivity', async () => {
+    const app = await loadApp({ supabase: createMockSupabase({ session }), lastActive: Date.now() - 29 * DAY });
+    expect(app.document.getElementById('mainApp').style.display).toBe('block');
+  });
+
+  it('signs the user out after more than 30 days of inactivity', async () => {
+    const supabase = createMockSupabase({ session });
+    const app = await loadApp({ supabase, lastActive: Date.now() - 31 * DAY });
+    expect(supabase.client.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(app.document.getElementById('authScreen').style.display).toBe('block');
+    expect(app.text('authMessage')).toContain('30 days of inactivity');
+    expect(app.window.localStorage.getItem('ft_last_active')).toBeNull();
+  });
+
+  it('shows the login screen with an explanation when a previous session can no longer be restored', async () => {
+    const app = await loadApp({ supabase: createMockSupabase({ session: null }), lastActive: Date.now() - DAY });
+    expect(app.document.getElementById('authScreen').style.display).toBe('block');
+    expect(app.text('authMessage')).toContain('session has ended');
+  });
+
+  it('shows no message on a first visit', async () => {
+    const app = await loadApp();
+    expect(app.text('authMessage')).toBe('');
+  });
+
+  it('ends all other sessions after a successful login (single active session)', async () => {
+    const app = await loadApp();
+    await app.login();
+    expect(app.supabase.client.auth.signOut).toHaveBeenCalledWith({ scope: 'others' });
+    expect(app.document.getElementById('mainApp').style.display).toBe('block');
+    expect(app.window.localStorage.getItem('ft_last_active')).not.toBeNull();
+  });
+
+  it('still logs in if ending the other sessions fails', async () => {
+    const app = await loadApp();
+    app.supabase.client.auth.signOut.mockResolvedValueOnce({ error: { message: 'nope' } });
+    await app.login();
+    expect(app.document.getElementById('mainApp').style.display).toBe('block');
+  });
+
+  it('returns to the login screen with a message when the session is revoked elsewhere', async () => {
+    const app = await loadApp();
+    await app.login();
+    app.supabase.emitAuth('SIGNED_OUT');
+    expect(app.document.getElementById('authScreen').style.display).toBe('block');
+    expect(app.document.getElementById('mainApp').style.display).toBe('none');
+    expect(app.text('authMessage')).toContain('signed in on another device');
+    expect(app.state('currentUser')).toBeNull();
+  });
+
+  it('does not show the "signed out elsewhere" message on a manual logout', async () => {
+    const app = await loadApp();
+    await app.login();
+    app.supabase.client.auth.signOut.mockImplementationOnce(async () => {
+      app.supabase.emitAuth('SIGNED_OUT');
+      return { error: null };
+    });
+    await app.window.logoutUser();
+    expect(app.supabase.client.auth.signOut).toHaveBeenLastCalledWith({ scope: 'local' });
+    expect(app.document.getElementById('authScreen').style.display).toBe('block');
+    expect(app.text('authMessage')).toBe('');
+    expect(app.window.localStorage.getItem('ft_last_active')).toBeNull();
+  });
+});

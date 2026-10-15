@@ -14,8 +14,9 @@ export const USER = { id: 'user-1', email: 'me@example.com' };
  * result of an operation (select/insert/upsert/update/delete), e.g. to simulate errors.
  * Every operation is recorded in `calls`.
  */
-export function createMockSupabase({ tables = {}, overrides = {}, delay = 0 } = {}) {
+export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null } = {}) {
   const calls = [];
+  const authListeners = [];
 
   function builder(table) {
     const call = { table, op: 'select', payload: null, options: null, filters: {} };
@@ -40,18 +41,24 @@ export function createMockSupabase({ tables = {}, overrides = {}, delay = 0 } = 
   const client = {
     from: (table) => builder(table),
     auth: {
-      getSession: vi.fn(async () => ({ data: { session: null } })),
+      getSession: vi.fn(async () => ({ data: { session } })),
+      onAuthStateChange: vi.fn((cb) => {
+        authListeners.push(cb);
+        return { data: { subscription: { unsubscribe() {} } } };
+      }),
       signUp: vi.fn(async () => ({ data: {}, error: null })),
       signInWithPassword: vi.fn(async () => ({ data: { user: USER }, error: null })),
       signOut: vi.fn(async () => ({ error: null })),
     },
   };
 
-  return { client, calls, ops: (table, op) => calls.filter((c) => c.table === table && c.op === op) };
+  const emitAuth = (event, sess = null) => authListeners.forEach((cb) => cb(event, sess));
+
+  return { client, calls, emitAuth, ops: (table, op) => calls.filter((c) => c.table === table && c.op === op) };
 }
 
 /** Loads index.html in jsdom with the CDN libraries and config replaced by mocks. */
-export async function loadApp({ supabase = createMockSupabase(), config = { url: 'http://mock', anonKey: 'mock' }, confirmResult = true } = {}) {
+export async function loadApp({ supabase = createMockSupabase(), config = { url: 'http://mock', anonKey: 'mock' }, confirmResult = true, lastActive = null } = {}) {
   const virtualConsole = new VirtualConsole(); // swallow expected errors (e.g. missing config)
   const dom = new JSDOM(html, {
     runScripts: 'dangerously', // external <script src> are not fetched: libraries are mocked below
@@ -62,6 +69,7 @@ export async function loadApp({ supabase = createMockSupabase(), config = { url:
       if (config) window.SUPABASE_CONFIG = config;
       window.supabase = { createClient: () => supabase.client };
       window.Chart = class { destroy() {} };
+      if (lastActive !== null) window.localStorage.setItem('ft_last_active', String(lastActive));
       window.alert = vi.fn();
       window.confirm = vi.fn(() => confirmResult);
     },
