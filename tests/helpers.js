@@ -14,7 +14,7 @@ export const USER = { id: 'user-1', email: 'me@example.com' };
  * result of an operation (select/insert/upsert/update/delete), e.g. to simulate errors.
  * Every operation is recorded in `calls`.
  */
-export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null, rpc = {} } = {}) {
+export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, session = null, rpc = {}, functions = {} } = {}) {
   const calls = [];
   const authListeners = [];
 
