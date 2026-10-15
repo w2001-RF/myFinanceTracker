@@ -32,6 +32,24 @@ Tests (Vitest + jsdom) load `index.html` with a mocked Supabase client and a stu
 - Rental income and savings: add, **edit**, delete and **reset** records; editable **loan amount** and **savings target**; **sub-targets** shown as milestones on the progress bar.
 - Light/dark theme (follows the device) and a layout that works down to ~240px wide screens.
 
+## Advice and AI recommendations
+The **Advice** tab has two parts:
+- **Quick insights**: rule-based tips (savings rate, rising expenses, loan repayment pace, savings vs deadline, next sub-target) computed in the browser. No network, always available.
+- **AI recommendations**: a Supabase Edge Function (`supabase/functions/ai-advice`) calls a free OpenAI-compatible LLM API and returns personalised tips. The API key is stored as a Supabase secret, never in the page.
+
+**Privacy:** the page sends only an anonymous summary (monthly income/expense totals, loan and savings progress). No name, email, account id or notes; expense descriptions are shared only if the user ticks the option. The user is asked for consent before the first request, the function validates and re-builds the payload, nothing is stored (only a timestamp for the daily quota) and the answer is shown as plain text.
+
+**Setup:**
+1. Run `supabase/migrations/20261018000000_ai_advice_usage.sql`.
+2. Get a free API key from an OpenAI-compatible provider (for example [Groq](https://console.groq.com), Google Gemini's OpenAI-compatible endpoint, or OpenRouter `:free` models). Free-tier limits change, so check the provider's current limits.
+3. Deploy:
+```sh
+supabase secrets set AI_API_KEY=your-key
+# optional: AI_BASE_URL (default https://api.groq.com/openai/v1), AI_MODEL (default llama-3.3-70b-versatile),
+#           AI_DAILY_LIMIT (default 5 per user per 24h), ALLOWED_ORIGIN (e.g. https://you.github.io)
+supabase functions deploy ai-advice
+```
+Until the function is deployed the AI button shows a friendly "not set up yet" message and the quick insights keep working.
 ## Owner (admin) console and privacy
 The app owner can manage **app-wide settings only**: maintenance mode and message, an announcement banner, whether the sign-up button is shown, and the default loan/target for new users. Every change is written to an audit log.
 

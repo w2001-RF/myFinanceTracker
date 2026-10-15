@@ -843,6 +843,7 @@ td.actions .btn + .btn {
     flex-wrap: wrap;
 }
 
+/* ---------- Advice ---------- */
 /* ---------- Announcement banner & admin ---------- */
 .announcement {
     position: sticky;
@@ -872,6 +873,60 @@ td.actions .btn + .btn {
 
 .check-row label {
     font-size: .92rem;
+}
+
+.insights {
+    display: grid;
+    gap: 10px;
+}
+
+.insight {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--rental);
+    border-radius: var(--radius-sm);
+}
+
+.insight.good { border-left-color: var(--income); }
+.insight.warn { border-left-color: var(--savings); }
+
+.insight-icon {
+    font-size: 1.2rem;
+}
+
+.insight p {
+    color: var(--text-muted);
+    font-size: .92rem;
+}
+
+.ai-advice {
+    margin-top: 12px;
+    padding: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.ai-advice.error {
+    background: var(--expense-bg);
+    color: var(--expense);
+}
+
+.ai-advice p + p,
+.ai-advice ul + p,
+.ai-advice p + ul {
+    margin-top: 8px;
+}
+
+.ai-advice ul {
+    padding-left: 20px;
+}
+
+.ai-advice li + li {
+    margin-top: 6px;
 }
 
 /* ---------- Tablet / phone ---------- */

@@ -478,6 +478,25 @@
                 </div>
             </div>
 
+            <!-- Advice Tab -->
+            <div id="advice" class="tab-content" role="tabpanel">
+                <div class="section">
+                    <h2>💡 Advice</h2>
+                    <p class="hint">Quick insights are calculated on your device from your own data. Nothing leaves your browser for this part.</p>
+                    <div id="insightList" class="insights"></div>
+
+                    <div class="card" style="padding: 14px; margin-top: 16px;">
+                        <h3 class="card-title">✨ AI recommendations</h3>
+                        <p class="hint">Sends an anonymous summary (monthly totals and goal progress: no name, email or notes) to a free AI service and shows personalised tips. This is general information, not professional financial advice.</p>
+                        <div class="check-row">
+                            <input type="checkbox" id="aiIncludeLabels">
+                            <label for="aiIncludeLabels">Also share my top 5 expense descriptions (optional, off by default)</label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn" id="aiAdviceBtn" onclick="getAiAdvice()">✨ Get AI advice</button>
+                        </div>
+                        <div id="aiAdvice" class="ai-advice" aria-live="polite" hidden></div>
+                        <p id="aiMeta" class="hint" style="margin: 8px 0 0;"></p>
             <!-- Owner console (only rendered for admins; app-wide settings, never user content) -->
             <div id="admin" class="tab-content" role="tabpanel">
                 <div class="section">
@@ -593,6 +612,8 @@
         let savingsMilestones = [];
         let milestonesAvailable = true;
         let editingMilestoneId = null;
+        const SAVINGS_DEADLINE = '2027-01';
+        const AI_CONSENT_KEY = 'ft_ai_consent';
 
         // App-wide settings (public, read by everyone; only admins can change them)
         const DEFAULT_APP_SETTINGS = {
@@ -752,6 +773,9 @@
             loanAmount = Number(appSettings.default_loan_amount);
             savingsTarget = Number(appSettings.default_savings_target);
             savingsMilestones = [];
+            document.getElementById('aiAdvice').hidden = true;
+            document.getElementById('aiAdvice').innerHTML = '';
+            document.getElementById('aiMeta').textContent = '';
             isAdmin = false;
             document.getElementById('adminTab').hidden = true;
             editingGeneralId = editingRentalId = editingSavingsId = editingMilestoneId = null;
@@ -953,6 +977,277 @@
         }
 
         // ============================================
+        // ADVICE: local insights + AI recommendations
+        // ============================================
+        const money = (n) => n.toFixed(2) + ' DHS';
+        const monthIndex = (m) => {
+            const [y, mo] = m.split('-').map(Number);
+            return y * 12 + (mo - 1);
+        };
+        const monthFromIndex = (i) => Math.floor(i / 12) + '-' + String(i % 12 + 1).padStart(2, '0');
+        const round2 = (n) => Math.round(n * 100) / 100;
+
+        // [{month, income, expenses}] sorted by month
+        function aggregateMonths(transactions) {
+            const byMonth = {};
+            transactions.forEach(t => {
+                const entry = byMonth[t.month] || (byMonth[t.month] = { month: t.month, income: 0, expenses: 0 });
+                if (t.type === 'income') entry.income += parseFloat(t.amount);
+                else entry.expenses += parseFloat(t.amount);
+            });
+            return Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
+        }
+
+        // Expense totals grouped by description (case-insensitive), biggest first
+        function expenseGroups(transactions) {
+            const groups = {};
+            transactions.filter(t => t.type !== 'income').forEach(t => {
+                const key = String(t.description).trim().toLowerCase();
+                const group = groups[key] || (groups[key] = { label: String(t.description).trim(), amount: 0 });
+                group.amount += parseFloat(t.amount);
+            });
+            return Object.values(groups).sort((a, b) => b.amount - a.amount);
+        }
+
+        // Rule-based insights, computed locally. `now` is injectable for testing.
+        function computeInsights({ transactions, rental, savings, loan, target, milestones, now = new Date() }) {
+            const insights = [];
+            const add = (level, title, text) => insights.push({ level, title, text });
+
+            // --- Cash flow ---
+            const months = aggregateMonths(transactions);
+            if (months.length === 0) {
+                add('info', 'Add your first transactions', 'Record your income and expenses on the Cash flow tab to get personalised insights.');
+            } else {
+                const income = months.reduce((sum, m) => sum + m.income, 0);
+                const expenses = months.reduce((sum, m) => sum + m.expenses, 0);
+
+                if (income === 0) {
+                    add('warn', 'No income recorded', 'Add your income so savings and spending can be compared.');
+                } else {
+                    const rate = (income - expenses) / income;
+                    const pct = (rate * 100).toFixed(0);
+                    if (rate < 0) {
+                        add('warn', 'Spending exceeds income', `You spent ${money(expenses - income)} more than you earned. Review your biggest expenses first.`);
+                    } else if (rate < 0.1) {
+                        add('warn', 'Low savings rate', `You keep only ${pct}% of your income. Aim for at least 10-20%.`);
+                    } else if (rate >= 0.2) {
+                        add('good', 'Healthy savings rate', `You keep ${pct}% of your income. Keep it up.`);
+                    } else {
+                        add('info', 'Savings rate', `You keep ${pct}% of your income. 20% is a good long-term target.`);
+                    }
+                }
+
+                if (months.length >= 2) {
+                    const last = months[months.length - 1];
+                    const prev = months[months.length - 2];
+                    if (prev.expenses > 0 && last.expenses > prev.expenses * 1.2) {
+                        add('warn', 'Expenses are rising', `${last.month} expenses are ${((last.expenses / prev.expenses - 1) * 100).toFixed(0)}% higher than ${prev.month}.`);
+                    } else if (prev.expenses > 0 && last.expenses < prev.expenses * 0.9) {
+                        add('good', 'Expenses are falling', `${last.month} expenses are ${((1 - last.expenses / prev.expenses) * 100).toFixed(0)}% lower than ${prev.month}.`);
+                    }
+                }
+
+                const groups = expenseGroups(transactions);
+                if (groups.length > 1 && expenses > 0 && groups[0].amount / expenses >= 0.3) {
+                    add('info', 'Biggest expense', `"${groups[0].label}" is ${(groups[0].amount / expenses * 100).toFixed(0)}% of your expenses (${money(groups[0].amount)}).`);
+                }
+            }
+
+            // --- Loan ---
+            if (rental.length === 0) {
+                add('info', 'Loan tracking', 'Add rental records to see when your loan will be repaid.');
+            } else {
+                const totalNet = rental.reduce((sum, r) => sum + parseFloat(r.income) - parseFloat(r.expense), 0);
+                const remaining = Math.max(0, loan - totalNet);
+                if (remaining === 0) {
+                    add('good', 'Loan repaid', 'Your rental income has covered the whole loan amount.');
+                } else {
+                    const avg = totalNet / rental.length;
+                    if (avg <= 0) {
+                        add('warn', 'Loan is not shrinking', `Your rental net is ${money(avg)} per month. Cut rental costs or raise the rent to start repaying ${money(remaining)}.`);
+                    } else {
+                        const n = Math.ceil(remaining / avg);
+                        const lastMonth = rental.map(r => r.month).sort().pop();
+                        add('info', 'Loan repayment pace', `At ${money(avg)} net per month, the remaining ${money(remaining)} is repaid in about ${n} months (around ${monthFromIndex(monthIndex(lastMonth) + n)}).`);
+                    }
+                }
+            }
+
+            // --- Savings ---
+            const saved = savings.reduce((sum, r) => sum + parseFloat(r.amount), 0);
+            const avgSaved = savings.length ? saved / savings.length : 0;
+            const remainingSavings = Math.max(0, target - saved);
+            if (savings.length === 0) {
+                add('info', 'Start saving', `Record your first deposit: the target is ${money(target)}.`);
+            } else if (remainingSavings === 0) {
+                add('good', 'Savings target reached', `You have saved ${money(saved)}. Consider setting a new, higher target.`);
+            } else {
+                const monthsLeft = monthIndex(SAVINGS_DEADLINE) - (now.getFullYear() * 12 + now.getMonth());
+                if (monthsLeft <= 0) {
+                    add('warn', 'Savings period has ended', `${money(remainingSavings)} is still missing to reach ${money(target)}. Extend the plan or raise your monthly deposit.`);
+                } else {
+                    const needed = remainingSavings / monthsLeft;
+                    if (avgSaved >= needed) {
+                        add('good', 'Savings on track', `You save ${money(avgSaved)} per month; ${money(needed)} per month is enough to reach the target by ${SAVINGS_DEADLINE}.`);
+                    } else {
+                        add('warn', 'Savings behind schedule', `You need about ${money(needed)} per month for the next ${monthsLeft} months to reach ${SAVINGS_DEADLINE}, but you save ${money(avgSaved)} on average.`);
+                    }
+                }
+            }
+
+            const next = milestones.slice().sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount))
+                .find(m => parseFloat(m.amount) > saved);
+            if (next) {
+                const toGo = parseFloat(next.amount) - saved;
+                add('info', 'Next sub-target', `${next.name}: ${money(toGo)} to go` +
+                    (avgSaved > 0 ? ` (about ${Math.ceil(toGo / avgSaved)} months at your pace).` : '.'));
+            }
+
+            return insights;
+        }
+
+        function renderInsights() {
+            const list = document.getElementById('insightList');
+            const icons = { good: '✅', warn: '⚠️', info: 'ℹ️' };
+            const insights = computeInsights({
+                transactions: generalTransactions,
+                rental: rentalRecords,
+                savings: savingsRecords,
+                loan: loanAmount,
+                target: savingsTarget,
+                milestones: savingsMilestones
+            });
+            list.innerHTML = insights.map(i => `<div class="insight ${i.level}">
+                <span class="insight-icon" aria-hidden="true">${icons[i.level]}</span>
+                <div><strong>${escapeHtml(i.title)}</strong><p>${escapeHtml(i.text)}</p></div>
+            </div>`).join('');
+        }
+
+        // Anonymous summary sent to the AI: numbers only. No ids, email or notes; descriptions only if opted in.
+        function buildAdviceSummary(includeLabels = false) {
+            const months = aggregateMonths(generalTransactions).slice(-12)
+                .map(m => ({ month: m.month, income: round2(m.income), expenses: round2(m.expenses) }));
+
+            const totalNet = rentalRecords.reduce((sum, r) => sum + parseFloat(r.income) - parseFloat(r.expense), 0);
+            const saved = savingsRecords.reduce((sum, r) => sum + parseFloat(r.amount), 0);
+            const lang = String(navigator.language || 'en').slice(0, 2).toLowerCase();
+
+            return {
+                language: ['en', 'fr', 'ar'].includes(lang) ? lang : 'en',
+                months: months,
+                loan: {
+                    amount: round2(loanAmount),
+                    repaid: round2(Math.min(loanAmount, Math.max(0, totalNet))),
+                    remaining: round2(Math.max(0, loanAmount - totalNet)),
+                    avg_monthly_net: round2(rentalRecords.length ? totalNet / rentalRecords.length : 0)
+                },
+                savings: {
+                    target: round2(savingsTarget),
+                    saved: round2(saved),
+                    remaining: round2(Math.max(0, savingsTarget - saved)),
+                    avg_monthly: round2(savingsRecords.length ? saved / savingsRecords.length : 0),
+                    deadline: SAVINGS_DEADLINE,
+                    milestones: savingsMilestones.slice(0, 10)
+                        .map(m => ({ amount: round2(parseFloat(m.amount)), reached: saved >= parseFloat(m.amount) }))
+                },
+                top_expenses: includeLabels ?
+                    expenseGroups(generalTransactions).slice(0, 5).map(g => ({ label: g.label, amount: round2(g.amount) })) : []
+            };
+        }
+
+        function hasAiConsent() {
+            try {
+                return localStorage.getItem(AI_CONSENT_KEY) === 'yes';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function rememberAiConsent() {
+            try {
+                localStorage.setItem(AI_CONSENT_KEY, 'yes');
+            } catch (e) { /* ask again next time */ }
+        }
+
+        // Text -> safe HTML: escape first, then allow only bullets and **bold**
+        function formatAdvice(text) {
+            const bold = (str) => str.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            let html = '';
+            let inList = false;
+            escapeHtml(text).split(/\r?\n/).forEach(rawLine => {
+                const line = rawLine.trim();
+                const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+                if (bullet) {
+                    if (!inList) {
+                        html += '<ul>';
+                        inList = true;
+                    }
+                    html += '<li>' + bold(bullet[1]) + '</li>';
+                } else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    if (line) html += '<p>' + bold(line) + '</p>';
+                }
+            });
+            return inList ? html + '</ul>' : html;
+        }
+
+        function showAdviceMessage(html, isError = false) {
+            const box = document.getElementById('aiAdvice');
+            box.hidden = false;
+            box.classList.toggle('error', isError);
+            box.innerHTML = html;
+        }
+
+        function getAiAdvice() {
+            return withBusy(getAiAdviceImpl);
+        }
+
+        async function getAiAdviceImpl() {
+            if (generalTransactions.length === 0) {
+                alert('Add some income and expense transactions first, so the advice has something to work with.');
+                return;
+            }
+
+            if (!hasAiConsent()) {
+                if (!confirm('Send an anonymous summary of your finances to a free AI service?\n\n' +
+                        'Sent: monthly income/expense totals, loan and savings progress.\n' +
+                        'Not sent: your name, email, notes or account id.\n\nContinue?')) {
+                    return;
+                }
+                rememberAiConsent();
+            }
+
+            const includeLabels = document.getElementById('aiIncludeLabels').checked;
+            showAdviceMessage('<p>Analysing your numbers…</p>');
+            document.getElementById('aiMeta').textContent = '';
+
+            const {
+                data,
+                error
+            } = await supabaseClient.functions.invoke('ai-advice', {
+                body: buildAdviceSummary(includeLabels)
+            });
+
+            if (error || !data || !data.advice) {
+                const status = error && error.context && error.context.status;
+                const messages = {
+                    429: 'You have reached today\'s limit for AI advice. Try again tomorrow; the quick insights above are always available.',
+                    401: 'Your session expired. Please log in again.',
+                    503: 'AI advice is not set up yet. The quick insights above still work.',
+                    502: 'The AI service is busy or unavailable right now. Please try again in a few minutes.'
+                };
+                showAdviceMessage('<p>' + escapeHtml(messages[status] || 'Could not get AI advice right now. Please try again later.') + '</p>', true);
+                return;
+            }
+
+            showAdviceMessage(formatAdvice(data.advice));
+            if (typeof data.remaining === 'number') {
+                document.getElementById('aiMeta').textContent = data.remaining + ' AI advice request(s) left today.';
+            }
         // APP SETTINGS & OWNER CONSOLE
         // ============================================
         async function loadAppSettings() {
@@ -1166,6 +1461,8 @@
                 updateRentalChart();
             } else if (tabName === 'savings') {
                 updateSavingsChart();
+            } else if (tabName === 'advice') {
+                renderInsights();
             } else if (tabName === 'admin') {
                 refreshAdminConsole();
             }

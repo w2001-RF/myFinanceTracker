@@ -41,6 +41,9 @@ export function createMockSupabase({ tables = {}, overrides = {}, delay = 0, ses
 
   const client = {
     from: (table) => builder(table),
+    functions: {
+      invoke: vi.fn(async (name) => functions[name] ?? { data: null, error: { message: 'not deployed', context: { status: 404 } } }),
+    },
     rpc: vi.fn(async (name) => rpc[name] ?? { data: null, error: null }),
     auth: {
       getSession: vi.fn(async () => ({ data: { session } })),
