@@ -12,7 +12,15 @@ permissions:
   id-token: write
 
 jobs:
+  # Robot Framework end-to-end tests: a failure blocks the deploy.
+  # Skip them with the repository variable RUN_E2E set to "false".
+  e2e:
+    if: ${{ vars.RUN_E2E != 'false' }}
+    uses: ./.github/workflows/e2e.yml
+
   build-and-deploy:
+    needs: e2e
+    if: ${{ !cancelled() && (needs.e2e.result == 'success' || needs.e2e.result == 'skipped') }}
     runs-on: ubuntu-latest
 
     environment:

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Narrow-screen harness</title>
+    <style>
+        /* Browsers will not shrink a window below ~500px, so very small phone widths are simulated by
+           loading the app in an iframe of the requested width: its media queries see that width. */
+        body { margin: 0; background: #777; }
+        iframe { display: block; border: 0; background: #fff; height: 900px; }
+    </style>
+</head>
+<body>
+    <iframe id="app" title="App" src="index.html"></iframe>
+    <script>
+        var width = parseInt(new URLSearchParams(location.search).get('w') || '280', 10);
+        document.getElementById('app').style.width = width + 'px';
+    </script>
+</body>
+</html>

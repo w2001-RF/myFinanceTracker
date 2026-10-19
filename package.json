@@ -4,7 +4,8 @@
   "scripts": {
     "test": "vitest run --exclude \"tests/ai/**\"",
     "test:ai": "vitest run tests/ai",
-    "test:all": "vitest run"
+    "test:all": "vitest run",
+    "test:e2e": "python robot/build_test_site.py && robot --outputdir robot/results robot/tests"
   },
   "devDependencies": {
     "jsdom": "^25.0.1",
