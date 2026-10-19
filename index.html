@@ -561,6 +561,152 @@
                         </div>
                     </form>
 
+                    <h3 class="card-title" style="margin-top: 22px;">🤖 AI advice models</h3>
+                    <p class="hint">Health, performance and token usage of the models that write the monthly advice. Technical metrics only: no prompts, advice texts or user data.</p>
+                    <p id="aiOpsUnavailable" class="hint" hidden>AI monitoring needs the latest database migration (see README).</p>
+
+                    <div id="aiOps">
+                        <div class="summary-box">
+                            <div class="summary-item">
+                                <h3>Success rate (30 d)</h3>
+                                <div class="amount" id="aiSuccessRate">—</div>
+                            </div>
+                            <div class="summary-item">
+                                <h3>Model calls</h3>
+                                <div class="amount" id="aiCalls">—</div>
+                            </div>
+                            <div class="summary-item is-savings">
+                                <h3>Backup model used</h3>
+                                <div class="amount savings" id="aiFallbackCalls">—</div>
+                            </div>
+                            <div class="summary-item">
+                                <h3>Avg latency</h3>
+                                <div class="amount" id="aiAvgLatency">—</div>
+                            </div>
+                            <div class="summary-item">
+                                <h3>Tokens in</h3>
+                                <div class="amount" id="aiTokensIn">—</div>
+                            </div>
+                            <div class="summary-item">
+                                <h3>Tokens out</h3>
+                                <div class="amount" id="aiTokensOut">—</div>
+                            </div>
+                        </div>
+                        <p id="aiLastRun" class="hint"></p>
+
+                        <div class="table-wrap">
+                            <table id="aiModelTable">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Model</th>
+                                        <th scope="col">Calls</th>
+                                        <th scope="col">Success</th>
+                                        <th scope="col">As backup</th>
+                                        <th scope="col">Avg ms</th>
+                                        <th scope="col">p95 ms</th>
+                                        <th scope="col">Tokens in</th>
+                                        <th scope="col">Tokens out</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <h4 class="card-title" style="margin-top: 14px;">Last 14 days</h4>
+                        <div class="table-wrap">
+                            <table id="aiDailyTable">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Day</th>
+                                        <th scope="col">Calls</th>
+                                        <th scope="col">Successful</th>
+                                        <th scope="col">Tokens</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <h4 class="card-title" style="margin-top: 14px;">Recent errors</h4>
+                        <div class="table-wrap">
+                            <table id="aiErrorTable">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">When</th>
+                                        <th scope="col">Model</th>
+                                        <th scope="col">Role</th>
+                                        <th scope="col">Error</th>
+                                        <th scope="col">HTTP</th>
+                                        <th scope="col">ms</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <form id="aiModelForm" class="card" style="padding: 14px; margin-top: 14px;" onsubmit="event.preventDefault(); saveAiModelSettings();">
+                            <h4 class="card-title">Model settings</h4>
+                            <div class="check-row">
+                                <input type="checkbox" id="aiEnabled">
+                                <label for="aiEnabled">Monthly AI advice enabled (kill switch: when off the monthly job does nothing)</label>
+                            </div>
+                            <div class="input-group">
+                                <div class="input-field">
+                                    <label for="aiPrimaryModel">Primary model</label>
+                                    <input type="text" id="aiPrimaryModel" maxlength="80" placeholder="llama-3.3-70b-versatile" autocomplete="off">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiFallbackModel">Backup model (used if the primary fails)</label>
+                                    <input type="text" id="aiFallbackModel" maxlength="80" placeholder="llama-3.1-8b-instant" autocomplete="off">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiTemperature">Temperature (0 - 1.5)</label>
+                                    <input type="number" id="aiTemperature" step="0.05" min="0" max="1.5" inputmode="decimal">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiMaxTokens">Max output tokens (100 - 2000)</label>
+                                    <input type="number" id="aiMaxTokens" step="50" min="100" max="2000" inputmode="numeric">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiTimeout">Timeout, seconds (5 - 60)</label>
+                                    <input type="number" id="aiTimeout" step="1" min="5" max="60" inputmode="numeric">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiMaxUsers">Users per run (1 - 100)</label>
+                                    <input type="number" id="aiMaxUsers" step="1" min="1" max="100" inputmode="numeric">
+                                </div>
+                                <div class="input-field">
+                                    <label for="aiDelay">Pause between users, ms (0 - 30000)</label>
+                                    <input type="number" id="aiDelay" step="100" min="0" max="30000" inputmode="numeric">
+                                </div>
+                            </div>
+                            <p class="hint">The provider URL and API key are Edge Function secrets and cannot be changed here, so summaries can never be redirected from the app. Check model ids in your provider's console.</p>
+                            <div class="form-actions">
+                                <button type="submit" class="btn" id="aiModelSubmit">Save model settings</button>
+                                <button type="button" class="btn btn-secondary" id="aiHealthBtn" onclick="runAiHealthCheck()">Test models now</button>
+                            </div>
+                        </form>
+
+                        <div id="aiHealthResult" hidden>
+                            <h4 class="card-title" style="margin-top: 14px;">Health test</h4>
+                            <p id="aiHealthConfig" class="hint"></p>
+                            <div class="table-wrap">
+                                <table id="aiHealthTable">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Role</th>
+                                            <th scope="col">Model</th>
+                                            <th scope="col">Status</th>
+                                            <th scope="col">Latency</th>
+                                            <th scope="col">Tokens in/out</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                     <h3 class="card-title" style="margin-top: 18px;">Audit log (last 20 changes)</h3>
                     <div class="table-wrap">
                         <table id="auditTable">
@@ -1451,6 +1597,8 @@
             document.getElementById('adminNewAccounts').textContent =
                 !overviewError && overview ? String(overview.new_accounts_30d) : '—';
 
+            await loadAiOps();
+
             const {
                 data: log,
                 error: logError
@@ -1476,6 +1624,206 @@
                     <td data-label="Changed">${escapeHtml(changed)}</td>
                 </tr>`;
             }).join('');
+        }
+
+        // ---- AI advice models: health, performance, tokens, settings (admin only, technical metrics) ----
+        const formatInt = (n) => Number(n || 0).toLocaleString('en-US');
+        const MODEL_NAME_PATTERN = /^[A-Za-z0-9._:/-]{1,80}$/;
+
+        const AI_ERROR_LABELS = {
+            timeout: 'Timed out',
+            network: 'Network error',
+            rate_limited: 'Rate limited',
+            auth: 'API key rejected',
+            model_unavailable: 'Model not found',
+            server_error: 'Provider error',
+            bad_request: 'Request refused',
+            bad_response: 'Empty/invalid answer'
+        };
+
+        function aiRowsOrEmpty(tbodySelector, rows, columns, emptyText) {
+            document.querySelector(tbodySelector).innerHTML = rows.length === 0 ?
+                `<tr class="empty-row"><td colspan="${columns}">${escapeHtml(emptyText)}</td></tr>` :
+                rows.join('');
+        }
+
+        function renderAiMetrics(metrics) {
+            const totals = metrics.totals || {};
+            const calls = Number(totals.calls || 0);
+            document.getElementById('aiSuccessRate').textContent =
+                calls ? Math.round((Number(totals.ok_calls || 0) / calls) * 100) + '%' : '—';
+            document.getElementById('aiCalls').textContent = formatInt(calls);
+            document.getElementById('aiFallbackCalls').textContent = formatInt(totals.fallback_calls);
+            document.getElementById('aiAvgLatency').textContent = calls ? formatInt(totals.avg_latency_ms) + ' ms' : '—';
+            document.getElementById('aiTokensIn').textContent = formatInt(totals.prompt_tokens);
+            document.getElementById('aiTokensOut').textContent = formatInt(totals.completion_tokens);
+
+            const run = metrics.last_run;
+            document.getElementById('aiLastRun').textContent = run ?
+                `Last monthly run: ${new Date(run.started_at).toLocaleString()} · ${run.status} · ${run.processed} generated, ${run.failed} failed, ${run.remaining} waiting` +
+                (run.stopped_early ? ' · stopped early (rate limit)' : '') + (run.duration_ms ? ` · ${(run.duration_ms / 1000).toFixed(1)} s` : '') :
+                'No monthly run recorded yet.';
+
+            aiRowsOrEmpty('#aiModelTable tbody', (metrics.by_model || []).map(m => {
+                const rate = m.calls ? Math.round((m.ok_calls / m.calls) * 100) + '%' : '—';
+                return `<tr>
+                    <td data-label="Model">${escapeHtml(m.model)}</td>
+                    <td data-label="Calls" class="num">${formatInt(m.calls)}</td>
+                    <td data-label="Success" class="num ${m.error_calls ? 'neg' : 'pos'}">${rate}</td>
+                    <td data-label="As backup" class="num">${formatInt(m.fallback_calls)}</td>
+                    <td data-label="Avg ms" class="num">${formatInt(m.avg_latency_ms)}</td>
+                    <td data-label="p95 ms" class="num">${formatInt(m.p95_latency_ms)}</td>
+                    <td data-label="Tokens in" class="num">${formatInt(m.prompt_tokens)}</td>
+                    <td data-label="Tokens out" class="num">${formatInt(m.completion_tokens)}</td>
+                </tr>`;
+            }), 8, 'No model calls recorded yet.');
+
+            aiRowsOrEmpty('#aiDailyTable tbody', (metrics.daily || []).map(d => `<tr>
+                <td data-label="Day">${escapeHtml(d.day)}</td>
+                <td data-label="Calls" class="num">${formatInt(d.calls)}</td>
+                <td data-label="Successful" class="num">${formatInt(d.ok_calls)}</td>
+                <td data-label="Tokens" class="num">${formatInt(d.total_tokens)}</td>
+            </tr>`), 4, 'No activity in the last 14 days.');
+
+            aiRowsOrEmpty('#aiErrorTable tbody', (metrics.recent_errors || []).map(e => `<tr>
+                <td data-label="When">${escapeHtml(new Date(e.created_at).toLocaleString())}${e.kind === 'health' ? ' (test)' : ''}</td>
+                <td data-label="Model">${escapeHtml(e.model)}</td>
+                <td data-label="Role">${escapeHtml(e.role)}</td>
+                <td data-label="Error" class="neg">${escapeHtml(AI_ERROR_LABELS[e.error_kind] || e.error_kind || 'Unknown')}</td>
+                <td data-label="HTTP" class="num">${e.http_status === null || e.http_status === undefined ? '—' : escapeHtml(e.http_status)}</td>
+                <td data-label="ms" class="num">${formatInt(e.latency_ms)}</td>
+            </tr>`), 6, 'No errors recorded. 🎉');
+        }
+
+        function renderAiModelSettings(row) {
+            const d = row || {};
+            document.getElementById('aiEnabled').checked = d.enabled !== false;
+            document.getElementById('aiPrimaryModel').value = d.primary_model || 'llama-3.3-70b-versatile';
+            document.getElementById('aiFallbackModel').value = d.fallback_model || 'llama-3.1-8b-instant';
+            document.getElementById('aiTemperature').value = d.temperature ?? 0.4;
+            document.getElementById('aiMaxTokens').value = d.max_tokens ?? 600;
+            document.getElementById('aiTimeout').value = d.timeout_seconds ?? 20;
+            document.getElementById('aiMaxUsers').value = d.max_users_per_run ?? 20;
+            document.getElementById('aiDelay').value = d.delay_ms ?? 2500;
+        }
+
+        async function loadAiOps() {
+            const [metricsResult, settingsResult] = await Promise.all([
+                supabaseClient.rpc('ai_advice_metrics', { p_days: 30 }),
+                supabaseClient.from('ai_model_settings').select('*').eq('id', true)
+            ]);
+
+            const unavailable = Boolean(metricsResult.error || settingsResult.error);
+            document.getElementById('aiOpsUnavailable').hidden = !unavailable;
+            document.getElementById('aiOps').hidden = unavailable;
+            if (unavailable) {
+                console.warn('AI monitoring unavailable:', (metricsResult.error || settingsResult.error).message);
+                return;
+            }
+
+            renderAiMetrics(metricsResult.data || {});
+            renderAiModelSettings((settingsResult.data || [])[0]);
+        }
+
+        function saveAiModelSettings() {
+            return withBusy(saveAiModelSettingsImpl);
+        }
+
+        async function saveAiModelSettingsImpl() {
+            if (!isAdmin) return;
+
+            const primary = document.getElementById('aiPrimaryModel').value.trim();
+            const backup = document.getElementById('aiFallbackModel').value.trim();
+            // A blank field must be invalid, not 0 (Number('') === 0)
+            const num = (id) => {
+                const raw = document.getElementById(id).value.trim();
+                return raw === '' ? NaN : Number(raw);
+            };
+            const inRange = (n, min, max) => Number.isFinite(n) && n >= min && n <= max;
+
+            if (!MODEL_NAME_PATTERN.test(primary) || !MODEL_NAME_PATTERN.test(backup)) {
+                alert('Model names may only contain letters, numbers and . _ : / - (max 80 characters)');
+                return;
+            }
+            if (!inRange(num('aiTemperature'), 0, 1.5) || !inRange(num('aiMaxTokens'), 100, 2000) ||
+                !inRange(num('aiTimeout'), 5, 60) || !inRange(num('aiMaxUsers'), 1, 100) || !inRange(num('aiDelay'), 0, 30000)) {
+                alert('One of the numeric settings is outside its allowed range');
+                return;
+            }
+            if (primary === backup && !confirm('The backup model is the same as the primary, so there is no real backup. Save anyway?')) {
+                return;
+            }
+
+            const {
+                error
+            } = await supabaseClient
+                .from('ai_model_settings')
+                .update({
+                    enabled: document.getElementById('aiEnabled').checked,
+                    primary_model: primary,
+                    fallback_model: backup,
+                    temperature: num('aiTemperature'),
+                    max_tokens: Math.round(num('aiMaxTokens')),
+                    timeout_seconds: Math.round(num('aiTimeout')),
+                    max_users_per_run: Math.round(num('aiMaxUsers')),
+                    delay_ms: Math.round(num('aiDelay'))
+                })
+                .eq('id', true);
+
+            if (error) {
+                alert('Error saving model settings: ' + error.message);
+                return;
+            }
+
+            showToast('Model settings saved');
+            await refreshAdminConsole();
+        }
+
+        function runAiHealthCheck() {
+            return withBusy(runAiHealthCheckImpl);
+        }
+
+        async function runAiHealthCheckImpl() {
+            if (!isAdmin) return;
+            showToast('Testing models…');
+
+            const {
+                data,
+                error
+            } = await supabaseClient.functions.invoke('ai-advice-health');
+
+            if (error) {
+                const status = error.context && error.context.status;
+                const messages = {
+                    401: 'Your session expired. Please log in again.',
+                    403: 'Only the app owner can run this test.',
+                    404: 'The ai-advice-health function is not deployed yet (see README).',
+                    429: 'Please wait a few seconds between tests.',
+                    503: 'The AI API key is not configured on the server.'
+                };
+                alert(messages[status] || 'The health test failed. Please try again.');
+                return;
+            }
+
+            const config = (data && data.config) || {};
+            document.getElementById('aiHealthConfig').textContent =
+                `Provider: ${config.provider_host || 'unknown'} · API key: ${config.api_key_configured ? 'set' : 'MISSING'} · ` +
+                `cron secret: ${config.cron_secret_configured ? 'set' : 'MISSING'} · monthly advice: ${config.enabled === false ? 'disabled' : 'enabled'}`;
+
+            const rows = ((data && data.results) || []).map(r => {
+                const status = r.ok ? '✅ OK' : '❌ ' + (AI_ERROR_LABELS[r.error_kind] || 'Failed') + (r.http_status ? ' (HTTP ' + r.http_status + ')' : '');
+                return `<tr>
+                    <td data-label="Role">${escapeHtml(r.role)}</td>
+                    <td data-label="Model">${escapeHtml(r.model)}</td>
+                    <td data-label="Status" class="${r.ok ? 'pos' : 'neg'}">${escapeHtml(status)}</td>
+                    <td data-label="Latency" class="num">${formatInt(r.latency_ms)} ms</td>
+                    <td data-label="Tokens in/out" class="num">${r.prompt_tokens === null ? '—' : formatInt(r.prompt_tokens)} / ${r.completion_tokens === null ? '—' : formatInt(r.completion_tokens)}</td>
+                </tr>`;
+            });
+            aiRowsOrEmpty('#aiHealthTable tbody', rows, 5, 'No models to test.');
+            document.getElementById('aiHealthResult').hidden = false;
+
+            await loadAiOps(); // the test is part of the metrics too
         }
 
         function saveAppSettings() {

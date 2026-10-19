@@ -68,7 +68,11 @@ describe('owner console', () => {
     const before = app.supabase.calls.length;
     await app.window.refreshAdminConsole();
     const touched = new Set(app.supabase.calls.slice(before).map((c) => c.table));
-    expect([...touched]).toEqual(['admin_audit_log']);
+    // Only admin-only tables: the audit log and the AI model settings (technical settings, no user data)
+    expect([...touched].sort()).toEqual(['admin_audit_log', 'ai_model_settings']);
+    for (const userTable of ['general_transactions', 'rental_records', 'savings_records', 'transaction_templates', 'user_settings', 'savings_milestones', 'ai_advice_settings', 'ai_advice_cache']) {
+      expect(touched.has(userTable), `${userTable} must not be read by the console`).toBe(false);
+    }
   });
 
   it('fills the form from the current settings', async () => {
