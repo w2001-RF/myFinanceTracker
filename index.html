@@ -819,17 +819,20 @@
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
         }
 
-        // Run an async action with the triggering buttons disabled to prevent double submits
+        // Run an async action once at a time to prevent double submits. "Busy" is a page-level state
+        // (CSS class + aria-busy) rather than disabling every button, so buttons the app itself disables
+        // (e.g. "Reset records" when there is nothing to reset) keep their state when the action ends.
         let busy = false;
         async function withBusy(fn) {
             if (busy) return;
             busy = true;
-            const buttons = document.querySelectorAll('button');
-            buttons.forEach(b => b.disabled = true);
+            document.body.classList.add('is-busy');
+            document.body.setAttribute('aria-busy', 'true');
             try {
                 await fn();
             } finally {
-                buttons.forEach(b => b.disabled = false);
+                document.body.classList.remove('is-busy');
+                document.body.removeAttribute('aria-busy');
                 busy = false;
             }
         }

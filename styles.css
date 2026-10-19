@@ -929,6 +929,23 @@ td.actions .btn + .btn {
     margin-top: 6px;
 }
 
+/* ---------- Busy state (a request is running) ---------- */
+.is-busy button {
+    pointer-events: none;
+    opacity: .6;
+    cursor: progress;
+}
+
+/* ---------- Layout safeguards ---------- */
+.chart-wrapper canvas {
+    max-width: 100%;
+}
+
+/* Keep a form clear of the sticky tab bar when it is scrolled into view (e.g. when editing a row) */
+form[id] {
+    scroll-margin-top: 84px;
+}
+
 /* ---------- Tablet / phone ---------- */
 @media (max-width: 720px) {
     .container {

@@ -1,0 +1,46 @@
+name: E2E tests (Robot Framework)
+
+# Runs the Robot Framework browser tests against the real index.html with a fake in-browser Supabase
+# (no backend, secrets or network services needed). It runs on every pull request, can be started by hand,
+# and is reused by the Pages deploy workflow as a quality gate.
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  robot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: robot/requirements.txt
+
+      - name: Install Robot Framework and SeleniumLibrary
+        run: pip install -r robot/requirements.txt
+
+      - name: Build the test site (real index.html + mock Supabase)
+        run: python robot/build_test_site.py
+
+      # Chrome and chromedriver come preinstalled on ubuntu-latest; Selenium Manager picks them up.
+      - name: Run Robot Framework tests
+        run: robot --outputdir robot/results --variable BROWSER:headlesschrome robot/tests
+
+      - name: Upload Robot report, log and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-results
+          path: robot/results
+          retention-days: 14

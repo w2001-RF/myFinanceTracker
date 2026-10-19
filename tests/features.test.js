@@ -373,3 +373,28 @@ describe('resetting records', () => {
     expect(app.window.alert).toHaveBeenCalledWith(expect.stringContaining('denied'));
   });
 });
+
+describe('busy state', () => {
+  it('does not re-enable buttons the app disabled on purpose when an action finishes', async () => {
+    // user_settings table missing => the loan/target buttons are disabled by the app
+    const supabase = createMockSupabase({ overrides: { 'user_settings:select': { data: null, error: { message: 'missing' } } } });
+    const app = await signedIn({ supabase });
+    expect(app.document.getElementById('loanSubmit').disabled).toBe(true);
+    app.setValue('rentalMonth', '2026-03');
+    app.setValue('rentalIncome', '100');
+    await app.window.addRentalRecord(); // runs inside withBusy
+    expect(app.document.getElementById('loanSubmit').disabled).toBe(true);
+    expect(app.document.getElementById('goalSubmit').disabled).toBe(true);
+  });
+
+  it('marks the page busy while a request runs and clears it afterwards', async () => {
+    const app = await signedIn({ supabase: createMockSupabase({ delay: 30 }) });
+    app.setValue('generalDesc', 'Coffee');
+    app.setValue('generalAmount', '5');
+    const pending = app.window.addGeneralTransaction();
+    expect(app.document.body.classList.contains('is-busy')).toBe(true);
+    await pending;
+    expect(app.document.body.classList.contains('is-busy')).toBe(false);
+    expect(app.document.body.hasAttribute('aria-busy')).toBe(false);
+  });
+});

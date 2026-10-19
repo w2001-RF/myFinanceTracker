@@ -4,3 +4,8 @@ dist/
 node_modules/
 
 supabase/.temp/
+robot/.site/
+robot/results/
+.venv/
+__pycache__/
+*.pyc

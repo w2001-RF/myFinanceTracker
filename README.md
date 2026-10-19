@@ -76,3 +76,18 @@ select id from auth.users where email = 'owner@example.com';
 ```
 
 **Limits to be aware of:** maintenance mode, the sign-up button and the announcement are enforced in the page; to block API sign-ups also turn sign-ups off in Supabase (Authentication). Whoever holds the Supabase project credentials (dashboard or service-role key) can technically read the database; keep those credentials out of the app, restrict who has them, and cover this in your privacy policy / data-processing terms.
+
+## End-to-end tests (Robot Framework)
+Browser tests in `robot/` drive the **real `index.html`** in headless Chrome: login and sessions, income/expenses (edit, filter, quick transactions), rental and savings (loan, target, sub-targets, reset), the Advice tab, the owner console and the AI model dashboard, and layouts at 280px and 240px screen widths. They need no backend, secrets or network: `robot/fixtures/mock-supabase.js` replaces Supabase (and a stub replaces Chart.js) inside the page.
+
+```sh
+python -m venv .venv && .venv/Scripts/activate        # Windows (use `source .venv/bin/activate` on macOS/Linux)
+pip install -r robot/requirements.txt
+python robot/build_test_site.py                         # copies index.html + styles.css and injects the mock into robot/.site
+robot --outputdir robot/results --variable BROWSER:headlesschrome robot/tests
+```
+Open `robot/results/report.html` for the report. Selenium downloads a matching Chrome/driver automatically if none is installed. `--variable BROWSER:edge` also works where Edge can be driven.
+
+- The test site is served from a free port by an in-process server (`robot/resources/StaticServer.py`), so nothing clashes with other dev servers and no process is left behind.
+- Very small phone widths are simulated by loading the app in an iframe of that width (`robot/fixtures/narrow.html`), because desktop browsers will not shrink a window below ~500px.
+- **GitHub:** `.github/workflows/e2e.yml` runs these tests on every pull request (and manually), uploads the report and screenshots as an artifact, and is called by the Pages deploy workflow, so a failing E2E test blocks the deploy. Set the repository variable `RUN_E2E` to `false` to skip them there. The unit tests (`npm test`) and the optional AI tests (`npm run test:ai`) are separate.
