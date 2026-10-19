@@ -45,14 +45,20 @@ How it works:
 **Privacy:** AI advice is off by default. When a user opts in (after a consent prompt) the app stores an anonymous summary (monthly totals, loan and savings progress; expense descriptions only if ticked) in `ai_advice_settings`. The cron job reads only that table, never transactions, rental or savings records, re-validates the summary before use, and logs only counts. Users can turn it off (which erases their shared summary) and delete their saved advice at any time; both tables are protected by Row Level Security.
 
 **Setup** (details in the deployment steps you were given):
-1. Run `supabase/migrations/20261019000000_ai_monthly_cache.sql`.
+1. Run `supabase/migrations/20261019000000_ai_monthly_cache.sql` and then `20261020000000_ai_model_monitoring.sql`.
 2. Set secrets: `AI_API_KEY`, `CRON_SECRET` (and optionally `AI_BASE_URL`, `AI_MODEL`, `AI_CRON_MAX_USERS`, `AI_CRON_DELAY_MS`, `ALLOWED_ORIGIN`).
-3. Deploy: `supabase functions deploy ai-advice` and `supabase functions deploy ai-advice-cron --no-verify-jwt`.
+3. Deploy: `supabase functions deploy ai-advice`, `supabase functions deploy ai-advice-health` and `supabase functions deploy ai-advice-cron --no-verify-jwt`.
 4. Add the GitHub repository secrets `SUPABASE_URL` and `CRON_SECRET` (same value as the Supabase secret) so `monthly-ai-advice.yml` can run. Test it once from Actions > Monthly AI advice > Run workflow.
 
 Free AI tiers (for example Groq, Google Gemini's OpenAI-compatible endpoint, OpenRouter `:free` models) change their limits, so check your provider's current limits.
 
 **Tests:** `npm test` runs the core tests; `npm run test:ai` runs the AI tests; `npm run test:all` runs everything. In CI the AI tests are optional: they never block a deploy, and you can skip them with the repository variable `RUN_AI_TESTS=false`.
+
+### Backup model and monitoring
+- **Backup model:** if the primary model fails (timeout, rate limit, model removed or renamed, provider error, empty answer) the monthly job automatically retries once with the backup model (both default to Groq models and are editable). An invalid API key is not retried, because the backup would fail too. If both models are rate limited the run stops early and the next scheduled day continues.
+- **Admin dashboard, "AI advice models":** success rate, calls, how often the backup was used, average and p95 latency, tokens in/out per model and per day, the last monthly run, recent errors, and **Test models now** (a tiny test request to each model, with status, latency, tokens and whether the API key / cron secret are configured).
+- **Model settings (admin only):** kill switch, primary and backup model, temperature, max output tokens, timeout, users per run and pause between users. Changes are validated, enforced by the database and written to the audit log. The provider URL and API key are deliberately **not** editable from the app: they are Edge Function secrets, so user summaries can never be redirected from the page.
+- **Privacy:** metrics are technical only (model name, status, latency, token counts). They never contain prompts, summaries, advice text or user ids, are readable by admins only and are deleted after 180 days.
 
 ## Owner (admin) console and privacy
 The app owner can manage **app-wide settings only**: maintenance mode and message, an announcement banner, whether the sign-up button is shown, and the default loan/target for new users. Every change is written to an audit log.
